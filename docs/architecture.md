@@ -20,10 +20,24 @@ Two Cloudflare Workers share one D1 database, one R2 bucket, and one queue per e
 | Worker | Role |
 | --- | --- |
 | `apps/web` | Astro SSR pages, React islands, the `/api/v1` API, `/openapi.json`, `/mcp`, Markdown twins, sitemaps, `llms.txt` |
-| `apps/jobs` | Ingest queue consumer, `IndexPackageWorkflow`, npm discovery cron |
+| `apps/jobs` | Ingest queue consumer, `IndexPackageWorkflow`, npm discovery cron, default-pages cron |
 
 The web Worker produces work (queue messages, Workflow instances); the jobs Worker consumes it.
 The jobs Worker deploys first because it owns the Workflow class the web Worker binds to.
+
+The jobs Worker has two cron triggers in every environment (`apps/jobs/wrangler.jsonc`):
+
+| Cron | Work |
+| --- | --- |
+| `17 */6 * * *` | npm discovery ([indexing](extending-indexers.md#how-packages-arrive)) |
+| `*/10 * * * *` (and every other tick) | `ensureDefaultPagesAsSystem`: creates and publishes any missing landing, about and policy page |
+
+Default pages therefore appear on a new environment within ten minutes of the first jobs deploy, with no manual
+step. The job goes through the page commands (validation, revisions, publication records) and records each page it
+creates and publishes in the audit log as the system actor `jobs.default-pages`. It never changes a page whose slug
+already exists, whether edited, published or not. The one exception is a page this job created itself and never
+published (still revision 1, no author, no publication), left by an interrupted run; it is published. When every
+page exists, a tick costs a single query. The admin "Create default pages" action remains for local use.
 `apps/cli` is a separate Node CLI over the public API ([docs/cli.md](cli.md)).
 
 ## Layers
@@ -110,6 +124,13 @@ so the prompt is copied and Gemini opens empty. Every action has a manual copy f
   `listed` and `featured` curation states ([what they mean](security-boundaries.md#curation-and-trust)).
 - Multi-statement writes that must be atomic (audit + change, search index refresh) go through
   `db.batch`.
+- D1 limits that local SQLite does not enforce: at most 100 bound parameters per statement, 1000 queries per
+  invocation, 2 MB per row. Queries that bind an id list split it with `chunked` (`packages/marketplace/src/d1-limits.ts`,
+  at most 90 ids); tests run the affected services through a D1 wrapper that fails any statement binding more than 100.
+- Draft saves are optimistic: a new revision is numbered `base + 1` from the revision the editor started from, so
+  the unique `(page_id, number)` index turns a concurrent save into a `conflict` instead of a lost edit.
+- Account deletion keeps media still used by a package preview or by any page revision (draft or published); only
+  its owner is cleared. Unreferenced media is deleted from D1 and R2.
 
 ## ClarkCant manifest
 

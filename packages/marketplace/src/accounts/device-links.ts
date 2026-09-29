@@ -1,5 +1,6 @@
 import {
   MarketplaceError,
+  actorHasScope,
   linkDeviceInputSchema,
   requireScope,
   requireUser,
@@ -18,6 +19,16 @@ import { parseInput } from "../validation";
 type DeviceLinkRow = typeof clarkcantDeviceLinks.$inferSelect;
 
 /**
+ * Device links accept the narrow `devices:link` scope (what OAuth and device-login clients such as ClarkCant desktop
+ * are offered) or the broader account scope that already covered them (`account:write` to change links,
+ * `account:read` to list them). `devices:link` grants nothing outside the caller's own device links.
+ */
+function requireDeviceScope(actor: Actor, accountScope: "account:read" | "account:write"): void {
+  if (actorHasScope(actor, accountScope)) return;
+  requireScope(actor, "devices:link");
+}
+
+/**
  * Records that a ClarkCant install (identified by its local principal `prin_*`) belongs to this marketplace
  * account. The link is informational and optional: ClarkCant's local identity stays authoritative on the device,
  * and a link never grants the marketplace any runtime authority there.
@@ -26,7 +37,7 @@ type DeviceLinkRow = typeof clarkcantDeviceLinks.$inferSelect;
  * retrying after a network failure does not create duplicates.
  */
 export async function linkDevice(deps: MarketplaceDeps, actor: Actor, input: LinkDeviceInput): Promise<DeviceLink> {
-  requireScope(actor, "account:write");
+  requireDeviceScope(actor, "account:write");
   const userId = requireUser(actor);
   const { localPrincipalId, deviceLabel } = parseInput(linkDeviceInputSchema, input);
 
@@ -58,7 +69,7 @@ export async function linkDevice(deps: MarketplaceDeps, actor: Actor, input: Lin
 }
 
 export async function listDeviceLinks(deps: MarketplaceDeps, actor: Actor): Promise<DeviceLink[]> {
-  requireScope(actor, "account:read");
+  requireDeviceScope(actor, "account:read");
   const rows = await deps.db
     .select()
     .from(clarkcantDeviceLinks)
@@ -69,7 +80,7 @@ export async function listDeviceLinks(deps: MarketplaceDeps, actor: Actor): Prom
 
 /** Unlinks one of the caller's devices. The row is kept (revoked) for the account's own export and audit trail. */
 export async function unlinkDevice(deps: MarketplaceDeps, actor: Actor, linkId: string): Promise<void> {
-  requireScope(actor, "account:write");
+  requireDeviceScope(actor, "account:write");
   const userId = requireUser(actor);
   const [row] = await deps.db
     .select()

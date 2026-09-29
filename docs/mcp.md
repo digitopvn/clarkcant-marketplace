@@ -15,7 +15,7 @@ validation, idempotency and audit behave the same on both surfaces.
 | --- | --- | --- |
 | Anonymous | no `Authorization` header | public read tools |
 | Personal API token | `Authorization: Bearer cmk_…` (create one under Account → API tokens) | tools whose scope the token holds |
-| OAuth | an access token issued by the marketplace for resource `<site>/mcp` (discovery below) | tools whose scope the grant holds; never `admin` |
+| OAuth | an access token issued by the marketplace for resource `<site>/mcp` (discovery below) | tools whose scope the grant holds; never `admin` or `account:write` |
 | Device login | the session token from `clark-market login` | the account's scopes without `admin` |
 
 Browser session cookies are ignored on `/mcp`. Without that rule, a cross-site page could drive tools with a
@@ -29,6 +29,9 @@ Calling a tool that needs a scope:
 - **Authenticated but missing the scope:** the answer is `403` with `error="insufficient_scope"`.
 
 MCP clients use these challenges to start or step up OAuth.
+
+Request bodies are limited to 8 MiB (`MAX_MCP_BODY_BYTES`). A larger body, with or without `Content-Length`, is
+answered `413` (`payload_too_large`) before any authentication.
 
 Discovery documents (root-level, for MCP clients):
 
@@ -67,9 +70,9 @@ Admin tools, listed only when the scope is held:
 | `patch_page` | `pages:write` | Applies block, SEO and layout operations atomically as one draft revision |
 | `preview_page` | `pages:write` | Signed, expiring preview URL |
 | `publish_page` | `pages:publish` | Publishes the current draft revision; a stale revision fails with `conflict` |
-| `upload_media` | `media:write` | Base64 image (PNG, JPEG, WebP, GIF or AVIF, 5 MiB max); the bytes are sniffed |
+| `upload_media` | `media:write` | Base64 image (PNG, JPEG, WebP or GIF, 5 MiB max decoded); the bytes are sniffed |
 | `manage_collection` | `packages:curate` | `create`, `update`, `add_item`, `remove_item`, `reorder` |
-| `feature_package` | `packages:curate` | Feature or unfeature a listed package |
+| `feature_package` | `packages:curate` | Feature or unfeature a listed package (hiding or rejecting is REST-only) |
 
 Every write accepts `idempotencyKey`, so a retried call is applied at most once.
 

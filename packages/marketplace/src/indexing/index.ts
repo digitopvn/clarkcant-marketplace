@@ -1,6 +1,7 @@
 export {
   INDEXER_ACTOR,
   INITIAL_CURATION_STATUS,
+  MAX_README_HTML_BYTES,
   indexPackage,
   readmeBaseUrl,
   runStepsInline,
@@ -9,7 +10,15 @@ export {
   type IndexPackageResult,
   type StepRunner,
 } from "./index-package";
-export { DISCOVERY_KEYWORDS, discoverNpmPackages, handleIngestMessage, type DiscoverOptions, type HandleIngestOptions } from "./discovery";
+export {
+  DISCOVERY_KEYWORDS,
+  MAX_QUEUED_PER_RUN,
+  discoverNpmPackages,
+  handleIngestMessage,
+  type DiscoverOptions,
+  type DiscoveryResult,
+  type HandleIngestOptions,
+} from "./discovery";
 export {
   createSystemSubmission,
   enqueueIngest,
@@ -33,6 +42,7 @@ export {
   type ResolvedVersion,
 } from "./npm-registry";
 export { createLocalRegistryFetch, type LocalTarball } from "./local-registry";
-export { readPackageArchive, type PackageArchive } from "./package-archive";
+export { MAX_README_BYTES, readPackageArchive, type PackageArchive } from "./package-archive";
+export { compareSemver, isNewerSemver } from "./semver-order";
 export { TarFormatError, readTar, readTarGz, type TarEntry } from "./tar-reader";
 export { renderSocialCardSvg } from "./social-card";

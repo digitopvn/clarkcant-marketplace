@@ -3,7 +3,8 @@ import type { MiddlewareHandler } from "astro";
 /**
  * Structured request logging. Each request produces exactly one JSON line (`event: "request"`) carrying the request
  * id, so Workers Logs (`observability.enabled` in wrangler.jsonc) can filter and join by field. Query strings are
- * never logged: they can carry search terms, OAuth codes or device codes.
+ * never logged: they can carry search terms, OAuth codes or device codes. Path segments that are credentials
+ * themselves (signed `/preview/<token>` links) are redacted by `logPath`.
  */
 
 export const REQUEST_ID_HEADER = "x-request-id";
@@ -17,6 +18,11 @@ export function logEvent(level: LogLevel, event: string, fields: Record<string, 
   if (level === "error") console.error(line);
   else if (level === "warn") console.warn(line);
   else console.info(line);
+}
+
+/** The path as it may appear in logs: a preview link's token is a bearer credential and is replaced. */
+export function logPath(pathname: string): string {
+  return pathname.replace(/^\/preview\/[^/]+/, "/preview/:token");
 }
 
 /** Honours a well-formed caller id (the same rule the API applies) so traces join up; mints one otherwise. */
@@ -44,7 +50,7 @@ export const requestLog: MiddlewareHandler = async (context, next) => {
   const started = Date.now();
   const requestId = resolveRequestId(context.request);
   context.locals.requestId = requestId;
-  const base = { method: context.request.method, path: context.url.pathname };
+  const base = { method: context.request.method, path: logPath(context.url.pathname) };
 
   let response: Response;
   try {

@@ -21,6 +21,10 @@ import {
   publisherMemberSchema,
   publisherRepositorySchema,
   publisherSchema,
+  MarketplaceError,
+  requireScope,
+  requireUser,
+  type Actor,
 } from "@marketplace/contracts";
 import {
   acceptInvitation,
@@ -50,6 +54,7 @@ import {
   unlinkDevice,
   verifyPublisherDomain,
   verifyPublisherRepository,
+  withIdempotency,
   type MarketplaceDeps,
 } from "@marketplace/marketplace";
 import { deleteMediaIfUnreferenced } from "@marketplace/media";
@@ -61,7 +66,8 @@ const ERROR_DESCRIPTIONS = {
   401: "No credential, or an invalid/expired/revoked one (`unauthorized`)",
   403: "Missing scope, not permitted, or cross-site request (`forbidden`)",
   404: "Not found, or not visible to the caller",
-  409: "Conflicts with the current state (`conflict`)",
+  409: "Conflicts with the current state (`conflict`), or a request with this Idempotency-Key is still running (`idempotency_in_progress`)",
+  422: "Idempotency-Key reused with a different request (`idempotency_key_reused`)",
   500: "Server error",
 } as const;
 type ErrorStatus = keyof typeof ERROR_DESCRIPTIONS;
@@ -91,6 +97,16 @@ const idParam = z.object({ id: z.string().min(1).max(200) });
 const publisherParam = z.object({ publisherId: z.string().min(1).max(200) });
 const publisherChildParam = publisherParam.extend({ childId: z.string().min(1).max(200) });
 const common = errors(401, 403, 500);
+/** Every `/me/*` POST accepts `Idempotency-Key`; a retry with the same key and request replays the first answer. */
+const writeHeaders = z.object({
+  "idempotency-key": z
+    .string()
+    .min(1)
+    .max(255)
+    .optional()
+    .openapi({ description: "Makes retries safe; replayed for 24 hours" }),
+});
+const writeErrors = errors(409, 422);
 
 const oauthGrantSchema = z.object({
   clientId: z.string(),
@@ -128,30 +144,34 @@ const routes = {
   }),
   createToken: createRoute({
     method: "post", path: "/me/tokens", operationId: "createApiToken", tags, security,
-    summary: "Create a scoped personal API token; the plaintext `token` is returned once",
-    request: { body: body(createApiTokenInputSchema) },
-    responses: { 201: json(createdApiTokenSchema, "Created"), ...common, ...errors(400, 409) },
+    summary:
+      "Create a scoped personal API token (needs a signed-in session, not a token); the plaintext `token` is " +
+      "returned once, so a replayed Idempotency-Key answers 409 instead of repeating it",
+    request: { headers: writeHeaders, body: body(createApiTokenInputSchema) },
+    responses: { 201: json(createdApiTokenSchema, "Created"), ...common, ...errors(400, 409), ...writeErrors },
   }),
   revokeToken: createRoute({
     method: "delete", path: "/me/tokens/{id}", operationId: "revokeApiToken", tags, security,
-    summary: "Revoke a personal API token",
+    summary: "Revoke a personal API token (needs a signed-in session, not a token)",
     request: { params: idParam },
     responses: { 200: json(apiTokenSchema, "Revoked"), ...common, ...errors(404) },
   }),
   linkDevice: createRoute({
     method: "post", path: "/me/devices/link", operationId: "linkClarkCantDevice", tags, security,
-    summary: "Link a ClarkCant install (local principal prin_*) to this account; idempotent per principal",
-    request: { body: body(linkDeviceInputSchema) },
-    responses: { 200: json(deviceLinkSchema, "Linked"), ...common, ...errors(400) },
+    summary:
+      "Link a ClarkCant install (local principal prin_*) to this account; idempotent per principal. Needs " +
+      "`devices:link` (offered to OAuth clients) or `account:write`",
+    request: { headers: writeHeaders, body: body(linkDeviceInputSchema) },
+    responses: { 200: json(deviceLinkSchema, "Linked"), ...common, ...errors(400), ...writeErrors },
   }),
   listDevices: createRoute({
     method: "get", path: "/me/devices", operationId: "listClarkCantDevices", tags, security,
-    summary: "Linked ClarkCant installs",
+    summary: "Linked ClarkCant installs (`devices:link` or `account:read`)",
     responses: { 200: json(itemsOf(deviceLinkSchema), "Linked devices"), ...common },
   }),
   unlinkDevice: createRoute({
     method: "delete", path: "/me/devices/{id}", operationId: "unlinkClarkCantDevice", tags, security,
-    summary: "Unlink a ClarkCant install",
+    summary: "Unlink a ClarkCant install (`devices:link` or `account:write`)",
     request: { params: idParam },
     responses: { 204: { description: "Unlinked" }, ...common, ...errors(404) },
   }),
@@ -174,8 +194,8 @@ const routes = {
   createPublisher: createRoute({
     method: "post", path: "/me/publishers", operationId: "createPublisher", tags: ["publishers"], security,
     summary: "Create a publisher (the caller becomes its owner)",
-    request: { body: body(createPublisherInputSchema) },
-    responses: { 201: json(publisherSchema, "Created"), ...common, ...errors(400, 409) },
+    request: { headers: writeHeaders, body: body(createPublisherInputSchema) },
+    responses: { 201: json(publisherSchema, "Created"), ...common, ...errors(400, 409), ...writeErrors },
   }),
   listMembers: createRoute({
     method: "get", path: "/me/publishers/{publisherId}/members", operationId: "listPublisherMembers",
@@ -193,14 +213,14 @@ const routes = {
     method: "post", path: "/me/publishers/{publisherId}/invitations", operationId: "inviteMember",
     tags: ["publishers"], security,
     summary: "Invite an email address; share the returned invitation id with the invitee (no email is sent)",
-    request: { params: publisherParam, body: body(inviteMemberInputSchema) },
-    responses: { 201: json(publisherInvitationSchema, "Invited"), ...common, ...errors(400, 404, 409) },
+    request: { headers: writeHeaders, params: publisherParam, body: body(inviteMemberInputSchema) },
+    responses: { 201: json(publisherInvitationSchema, "Invited"), ...common, ...errors(400, 404, 409), ...writeErrors },
   }),
   acceptInvitation: createRoute({
     method: "post", path: "/me/invitations/{id}/accept", operationId: "acceptInvitation", tags: ["publishers"],
-    security, summary: "Accept an invitation addressed to the caller's email",
-    request: { params: idParam },
-    responses: { 200: json(publisherSchema, "Joined"), ...common, ...errors(404, 409) },
+    security, summary: "Accept an invitation addressed to the caller's email (the email must be verified)",
+    request: { headers: writeHeaders, params: idParam },
+    responses: { 200: json(publisherSchema, "Joined"), ...common, ...errors(404, 409), ...writeErrors },
   }),
   listDomains: createRoute({
     method: "get", path: "/me/publishers/{publisherId}/domains", operationId: "listPublisherDomains",
@@ -211,15 +231,15 @@ const routes = {
   addDomain: createRoute({
     method: "post", path: "/me/publishers/{publisherId}/domains", operationId: "addPublisherDomain",
     tags: ["publishers"], security, summary: "Claim a domain; returns the DNS TXT record to publish",
-    request: { params: publisherParam, body: body(addDomainInputSchema) },
-    responses: { 201: json(publisherDomainSchema, "Claimed"), ...common, ...errors(400, 404, 409) },
+    request: { headers: writeHeaders, params: publisherParam, body: body(addDomainInputSchema) },
+    responses: { 201: json(publisherDomainSchema, "Claimed"), ...common, ...errors(400, 404, 409), ...writeErrors },
   }),
   verifyDomain: createRoute({
     method: "post", path: "/me/publishers/{publisherId}/domains/{childId}/verify",
     operationId: "verifyPublisherDomain", tags: ["publishers"], security,
     summary: "Check the DNS TXT record now and mark the domain verified on a match",
-    request: { params: publisherChildParam },
-    responses: { 200: json(publisherDomainSchema, "Verified"), ...common, ...errors(404, 409) },
+    request: { headers: writeHeaders, params: publisherChildParam },
+    responses: { 200: json(publisherDomainSchema, "Verified"), ...common, ...errors(404, 409), ...writeErrors },
   }),
   listRepositories: createRoute({
     method: "get", path: "/me/publishers/{publisherId}/repositories", operationId: "listPublisherRepositories",
@@ -230,15 +250,15 @@ const routes = {
   linkRepository: createRoute({
     method: "post", path: "/me/publishers/{publisherId}/repositories", operationId: "linkPublisherRepository",
     tags: ["publishers"], security, summary: "Link a GitHub repository; returns the verification file to commit",
-    request: { params: publisherParam, body: body(linkRepositoryInputSchema) },
-    responses: { 201: json(publisherRepositorySchema, "Linked"), ...common, ...errors(400, 404, 409) },
+    request: { headers: writeHeaders, params: publisherParam, body: body(linkRepositoryInputSchema) },
+    responses: { 201: json(publisherRepositorySchema, "Linked"), ...common, ...errors(400, 404, 409), ...writeErrors },
   }),
   verifyRepository: createRoute({
     method: "post", path: "/me/publishers/{publisherId}/repositories/{childId}/verify",
     operationId: "verifyPublisherRepository", tags: ["publishers"], security,
     summary: "Check the verification file on the default branch now",
-    request: { params: publisherChildParam },
-    responses: { 200: json(publisherRepositorySchema, "Verified"), ...common, ...errors(404, 409) },
+    request: { headers: writeHeaders, params: publisherChildParam },
+    responses: { 200: json(publisherRepositorySchema, "Verified"), ...common, ...errors(404, 409), ...writeErrors },
   }),
   listClaims: createRoute({
     method: "get", path: "/me/publishers/{publisherId}/claims", operationId: "listPackageClaims",
@@ -250,8 +270,8 @@ const routes = {
     method: "post", path: "/me/publishers/{publisherId}/claims", operationId: "claimPackage",
     tags: ["publishers"], security,
     summary: "Claim an indexed package via npm maintainers or a verified repository; approved when proven",
-    request: { params: publisherParam, body: body(claimPackageInputSchema) },
-    responses: { 201: json(packageClaimSchema, "Recorded"), ...common, ...errors(400, 404, 409) },
+    request: { headers: writeHeaders, params: publisherParam, body: body(claimPackageInputSchema) },
+    responses: { 201: json(packageClaimSchema, "Recorded"), ...common, ...errors(400, 404, 409), ...writeErrors },
   }),
 };
 
@@ -260,6 +280,53 @@ function mediaDeleter(deps: MarketplaceDeps) {
   const bucket = deps.media;
   if (!bucket) return undefined;
   return (mediaId: string) => deleteMediaIfUnreferenced({ db: deps.db, bucket, ids: deps.ids, now: deps.now }, mediaId);
+}
+
+/**
+ * Personal API tokens outlive the credential that creates them (up to a year) and are not revoked with it, so only
+ * a signed-in session may create or revoke them, as with account deletion. A token (`cmk_…` or OAuth) must not be
+ * able to extend itself into a long-lived credential. Anonymous callers fall through to the service's 401.
+ */
+function requireSignedInSession(actor: Actor, action: string): void {
+  if (actor.type === "token") {
+    throw new MarketplaceError("forbidden", `${action} needs a signed-in session, not a token`, {
+      details: { reason: "session_required" },
+    });
+  }
+}
+
+/**
+ * No email is ever sent, so an invitation id is only bound to a mailbox when the account proved it owns the address
+ * (e.g. a verified GitHub email). Unverified sign-ups cannot accept invitations addressed to an email they typed.
+ */
+async function requireVerifiedEmail(deps: MarketplaceDeps, actor: Actor): Promise<void> {
+  requireScope(actor, "account:write");
+  // Reads the caller's own verification flag only; nothing from the profile is returned to the caller.
+  const profile = await getAccountProfile(deps, { type: actor.type, userId: requireUser(actor), scopes: ["account:read"] });
+  if (!profile.emailVerified) {
+    throw new MarketplaceError("forbidden", "Verify your account email before accepting a publisher invitation", {
+      details: { reason: "email_unverified" },
+    });
+  }
+}
+
+/**
+ * Runs a `/me/*` write at most once per `Idempotency-Key` for this account and operation; without a key it simply
+ * runs. The key's scope includes the account id, so keys never collide across accounts.
+ */
+async function idempotent<T>(
+  deps: MarketplaceDeps,
+  actor: Actor,
+  operation: string,
+  key: string | undefined,
+  request: unknown,
+  statusCode: number,
+  run: () => Promise<T>,
+): Promise<{ response: T; replayed: boolean }> {
+  if (key === undefined) return { response: await run(), replayed: false };
+  const scope = `user:${requireUser(actor)}:me.${operation}`;
+  const outcome = await withIdempotency(deps, { scope, key }, request, async () => ({ statusCode, response: await run() }));
+  return { response: outcome.response, replayed: outcome.replayed };
 }
 
 /**
@@ -281,6 +348,7 @@ export function createMeRouter() {
   });
   const ports = createHttpVerificationPorts();
   const noStore = { "Cache-Control": "private, no-store" };
+  const key = (c: { req: { header(name: string): string | undefined } }) => c.req.header("idempotency-key");
 
   return router
     .openapi(routes.getMe, async (c) => c.json(await getAccountProfile(c.var.context.deps, c.var.actor), 200, noStore))
@@ -301,15 +369,39 @@ export function createMeRouter() {
     .openapi(routes.listTokens, async (c) =>
       c.json({ items: await listApiTokens(c.var.context.deps, c.var.actor) }, 200, noStore),
     )
-    .openapi(routes.createToken, async (c) =>
-      c.json(await createApiToken(c.var.context.deps, c.var.actor, c.req.valid("json")), 201, noStore),
-    )
-    .openapi(routes.revokeToken, async (c) =>
-      c.json(await revokeApiToken(c.var.context.deps, c.var.actor, c.req.valid("param").id), 200, noStore),
-    )
-    .openapi(routes.linkDevice, async (c) =>
-      c.json(await linkDevice(c.var.context.deps, c.var.actor, c.req.valid("json")), 200, noStore),
-    )
+    .openapi(routes.createToken, async (c) => {
+      const { deps } = c.var.context;
+      const actor = c.var.actor;
+      requireSignedInSession(actor, "Creating an API token");
+      const input = c.req.valid("json");
+      // The plaintext is never stored for replay (only its hash exists at rest), so a replay cannot repeat it.
+      let plaintext: string | undefined;
+      const { response, replayed } = await idempotent(deps, actor, "tokens.create", key(c), input, 201, async () => {
+        const { token, ...metadata } = await createApiToken(deps, actor, input);
+        plaintext = token;
+        return metadata;
+      });
+      if (replayed || plaintext === undefined) {
+        throw new MarketplaceError(
+          "conflict",
+          "A token was already created with this Idempotency-Key and its plaintext is shown only once; revoke it and create a new one if it was lost",
+          { details: { tokenId: response.id } },
+        );
+      }
+      return c.json({ ...response, token: plaintext }, 201, noStore);
+    })
+    .openapi(routes.revokeToken, async (c) => {
+      requireSignedInSession(c.var.actor, "Revoking an API token");
+      return c.json(await revokeApiToken(c.var.context.deps, c.var.actor, c.req.valid("param").id), 200, noStore);
+    })
+    .openapi(routes.linkDevice, async (c) => {
+      const { deps } = c.var.context;
+      const input = c.req.valid("json");
+      const { response } = await idempotent(deps, c.var.actor, "devices.link", key(c), input, 200, () =>
+        linkDevice(deps, c.var.actor, input),
+      );
+      return c.json(response, 200, noStore);
+    })
     .openapi(routes.listDevices, async (c) =>
       c.json({ items: await listDeviceLinks(c.var.context.deps, c.var.actor) }, 200, noStore),
     )
@@ -327,9 +419,14 @@ export function createMeRouter() {
     .openapi(routes.listPublishers, async (c) =>
       c.json({ items: await listMyPublishers(c.var.context.deps, c.var.actor) }, 200, noStore),
     )
-    .openapi(routes.createPublisher, async (c) =>
-      c.json(await createPublisher(c.var.context.deps, c.var.actor, c.req.valid("json")), 201, noStore),
-    )
+    .openapi(routes.createPublisher, async (c) => {
+      const { deps } = c.var.context;
+      const input = c.req.valid("json");
+      const { response } = await idempotent(deps, c.var.actor, "publishers.create", key(c), input, 201, () =>
+        createPublisher(deps, c.var.actor, input),
+      );
+      return c.json(response, 201, noStore);
+    })
     .openapi(routes.listMembers, async (c) => {
       const { publisherId } = c.req.valid("param");
       return c.json({ items: await listPublisherMembers(c.var.context.deps, c.var.actor, publisherId) }, 200, noStore);
@@ -340,24 +437,43 @@ export function createMeRouter() {
       return c.json({ items }, 200, noStore);
     })
     .openapi(routes.invite, async (c) => {
+      const { deps } = c.var.context;
       const { publisherId } = c.req.valid("param");
-      return c.json(await inviteMember(c.var.context.deps, c.var.actor, publisherId, c.req.valid("json")), 201, noStore);
+      const input = c.req.valid("json");
+      const { response } = await idempotent(deps, c.var.actor, "invitations.create", key(c), { publisherId, input }, 201, () =>
+        inviteMember(deps, c.var.actor, publisherId, input),
+      );
+      return c.json(response, 201, noStore);
     })
-    .openapi(routes.acceptInvitation, async (c) =>
-      c.json(await acceptInvitation(c.var.context.deps, c.var.actor, c.req.valid("param").id), 200, noStore),
-    )
+    .openapi(routes.acceptInvitation, async (c) => {
+      const { deps } = c.var.context;
+      const { id } = c.req.valid("param");
+      await requireVerifiedEmail(deps, c.var.actor);
+      const { response } = await idempotent(deps, c.var.actor, "invitations.accept", key(c), { id }, 200, () =>
+        acceptInvitation(deps, c.var.actor, id),
+      );
+      return c.json(response, 200, noStore);
+    })
     .openapi(routes.listDomains, async (c) => {
       const { publisherId } = c.req.valid("param");
       return c.json({ items: await listPublisherDomains(c.var.context.deps, c.var.actor, publisherId) }, 200, noStore);
     })
     .openapi(routes.addDomain, async (c) => {
+      const { deps } = c.var.context;
       const { publisherId } = c.req.valid("param");
-      const domain = await addPublisherDomain(c.var.context.deps, c.var.actor, publisherId, c.req.valid("json"));
-      return c.json(domain, 201, noStore);
+      const input = c.req.valid("json");
+      const { response } = await idempotent(deps, c.var.actor, "domains.add", key(c), { publisherId, input }, 201, () =>
+        addPublisherDomain(deps, c.var.actor, publisherId, input),
+      );
+      return c.json(response, 201, noStore);
     })
     .openapi(routes.verifyDomain, async (c) => {
-      const { publisherId, childId } = c.req.valid("param");
-      return c.json(await verifyPublisherDomain(c.var.context.deps, c.var.actor, publisherId, childId, ports), 200, noStore);
+      const { deps } = c.var.context;
+      const params = c.req.valid("param");
+      const { response } = await idempotent(deps, c.var.actor, "domains.verify", key(c), params, 200, () =>
+        verifyPublisherDomain(deps, c.var.actor, params.publisherId, params.childId, ports),
+      );
+      return c.json(response, 200, noStore);
     })
     .openapi(routes.listRepositories, async (c) => {
       const { publisherId } = c.req.valid("param");
@@ -365,22 +481,33 @@ export function createMeRouter() {
       return c.json({ items }, 200, noStore);
     })
     .openapi(routes.linkRepository, async (c) => {
+      const { deps } = c.var.context;
       const { publisherId } = c.req.valid("param");
-      const repository = await linkPublisherRepository(c.var.context.deps, c.var.actor, publisherId, c.req.valid("json"));
-      return c.json(repository, 201, noStore);
+      const input = c.req.valid("json");
+      const { response } = await idempotent(deps, c.var.actor, "repositories.link", key(c), { publisherId, input }, 201, () =>
+        linkPublisherRepository(deps, c.var.actor, publisherId, input),
+      );
+      return c.json(response, 201, noStore);
     })
     .openapi(routes.verifyRepository, async (c) => {
-      const { publisherId, childId } = c.req.valid("param");
-      const repository = await verifyPublisherRepository(c.var.context.deps, c.var.actor, publisherId, childId, ports);
-      return c.json(repository, 200, noStore);
+      const { deps } = c.var.context;
+      const params = c.req.valid("param");
+      const { response } = await idempotent(deps, c.var.actor, "repositories.verify", key(c), params, 200, () =>
+        verifyPublisherRepository(deps, c.var.actor, params.publisherId, params.childId, ports),
+      );
+      return c.json(response, 200, noStore);
     })
     .openapi(routes.listClaims, async (c) => {
       const { publisherId } = c.req.valid("param");
       return c.json({ items: await listPublisherClaims(c.var.context.deps, c.var.actor, publisherId) }, 200, noStore);
     })
     .openapi(routes.claimPackage, async (c) => {
+      const { deps } = c.var.context;
       const { publisherId } = c.req.valid("param");
-      const claim = await claimPackage(c.var.context.deps, c.var.actor, publisherId, c.req.valid("json"), ports);
-      return c.json(claim, 201, noStore);
+      const input = c.req.valid("json");
+      const { response } = await idempotent(deps, c.var.actor, "claims.create", key(c), { publisherId, input }, 201, () =>
+        claimPackage(deps, c.var.actor, publisherId, input, ports),
+      );
+      return c.json(response, 201, noStore);
     });
 }

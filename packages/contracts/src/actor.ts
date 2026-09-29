@@ -35,6 +35,7 @@ export const USER_SCOPES: readonly ApiScope[] = [
   "publishers:write",
   "account:read",
   "account:write",
+  "devices:link",
 ];
 
 export function scopesForAccount(isAdmin: boolean): ApiScope[] {

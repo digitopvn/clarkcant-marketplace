@@ -16,9 +16,9 @@ import {
   packageVersions,
   packages,
 } from "@marketplace/db";
-import { renderMarkdownToSafeHtml } from "@marketplace/markdown";
+import { MarkdownInputTooLargeError, renderMarkdownToSafeHtml } from "@marketplace/markdown";
 import { MediaRejectedError, storeGeneratedMedia, storeUntrustedImage, type MediaDeps } from "@marketplace/media";
-import { and, eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 
 import { prepareAuditEvent } from "../audit/audit-writer";
 import type { MarketplaceDeps } from "../deps";
@@ -27,7 +27,8 @@ import { isIndexingRejection, type IndexingRejectionCode } from "./indexing-erro
 import { verifyTarballIntegrity } from "./integrity";
 import { permissionRows, validateManifest } from "./manifest-validation";
 import { createNpmRegistry, resolveVersion, type NpmRegistry, type ResolvedVersion } from "./npm-registry";
-import { readPackageArchive } from "./package-archive";
+import { MAX_README_BYTES, readPackageArchive, type PackageArchive } from "./package-archive";
+import { isNewerSemver } from "./semver-order";
 import { SOCIAL_CARD_HEIGHT, SOCIAL_CARD_WIDTH, renderSocialCardSvg } from "./social-card";
 
 /**
@@ -159,10 +160,7 @@ async function ingestVersion(deps: MarketplaceDeps, registry: NpmRegistry, resol
   const verification = await verifyTarballIntegrity(tarball, resolved.integrity);
   const archive = await readPackageArchive(tarball);
   const manifest = validateManifest(archive.manifestText, resolved.version);
-  const readmeMd = archive.readme?.text ?? null;
-  const readmeHtml = readmeMd
-    ? renderMarkdownToSafeHtml(readmeMd, { baseUrl: readmeBaseUrl(resolved.name, resolved.version) })
-    : null;
+  const { readmeMd, readmeHtml, omitted: readmeOmitted } = renderReadme(archive, resolved);
 
   const media = mediaDeps(deps);
   const storedPreviews: { mediaId: string; path: string }[] = [];
@@ -247,7 +245,7 @@ async function ingestVersion(deps: MarketplaceDeps, registry: NpmRegistry, resol
       }),
     );
   });
-  for (const check of securityChecks(resolved, verification.integrity, rejectedPreviews)) {
+  for (const check of securityChecks(resolved, verification.integrity, rejectedPreviews, readmeOmitted)) {
     statements.push(deps.db.insert(packageAudits).values({ id: deps.ids("pa"), packageVersionId: versionId, createdAt: now, ...check }));
   }
 
@@ -266,11 +264,55 @@ interface CheckRow {
   details: unknown;
 }
 
+/**
+ * Stored README HTML is capped well below D1's 2 MB row limit: the row also holds the README source and the manifest.
+ */
+export const MAX_README_HTML_BYTES = 512 * 1024;
+
+interface ReadmeOutcome {
+  readmeMd: string | null;
+  readmeHtml: string | null;
+  omitted: { path: string; reason: string } | null;
+}
+
+/**
+ * Renders the README once, at index time. Every limit here is a deterministic fact about an immutable version, so an
+ * oversized or unrenderable README is recorded as omitted (a `readme` warn check) instead of failing the version,
+ * which would only be retried to the same result.
+ */
+function renderReadme(archive: PackageArchive, resolved: ResolvedVersion): ReadmeOutcome {
+  if (archive.readmeOmitted) {
+    return { readmeMd: null, readmeHtml: null, omitted: { path: archive.readmeOmitted.path, reason: archive.readmeOmitted.reason } };
+  }
+  if (!archive.readme) return { readmeMd: null, readmeHtml: null, omitted: null };
+  const { path, text } = archive.readme;
+  let html: string;
+  try {
+    html = renderMarkdownToSafeHtml(text, {
+      baseUrl: readmeBaseUrl(resolved.name, resolved.version),
+      maxLength: MAX_README_BYTES,
+    });
+  } catch (error) {
+    const reason = error instanceof MarkdownInputTooLargeError ? error.message : "README could not be rendered";
+    return { readmeMd: null, readmeHtml: null, omitted: { path, reason } };
+  }
+  const htmlBytes = new TextEncoder().encode(html).length;
+  if (htmlBytes > MAX_README_HTML_BYTES) {
+    return {
+      readmeMd: text,
+      readmeHtml: null,
+      omitted: { path, reason: `rendered README is ${htmlBytes} bytes; the limit is ${MAX_README_HTML_BYTES}` },
+    };
+  }
+  return { readmeMd: text, readmeHtml: html, omitted: null };
+}
+
 /** Automated facts about the artifact. They describe; they never change curation. */
 function securityChecks(
   resolved: ResolvedVersion,
   integrity: string,
   rejectedPreviews: { path: string; reason: string }[],
+  readmeOmitted: { path: string; reason: string } | null,
 ): CheckRow[] {
   const checks: CheckRow[] = [
     { check: "integrity", result: "pass", details: { algorithm: "sha512", integrity } },
@@ -282,6 +324,7 @@ function securityChecks(
       : { check: "install-scripts", result: "pass", details: { scripts: [] } },
   ];
   if (rejectedPreviews.length > 0) checks.push({ check: "previews", result: "warn", details: { rejected: rejectedPreviews } });
+  if (readmeOmitted) checks.push({ check: "readme", result: "warn", details: { omitted: readmeOmitted } });
   return checks;
 }
 
@@ -337,8 +380,11 @@ async function finalize(
   if (!current) throw new Error(`package ${ingested.packageId} disappeared during indexing`);
   const now = deps.now();
 
-  // The listing follows npm's `latest` dist-tag; indexing an older version never moves it backwards.
-  const becomesLatest = current.latestVersion === null || resolved.latestTag === resolved.version;
+  // The listing follows npm's `latest` dist-tag but only ever moves forward. `resolved` may be minutes old (Workflows
+  // persist it between steps), so a stale run finishing after a newer version was indexed must not roll it back.
+  const becomesLatest =
+    current.latestVersion === null ||
+    (resolved.latestTag === resolved.version && isNewerSemver(resolved.version, current.latestVersion));
   const listing: Partial<typeof packages.$inferInsert> = { indexedAt: now, updatedAt: now };
   if (becomesLatest) {
     const [version] = await deps.db
@@ -370,8 +416,21 @@ async function finalize(
       becameLatest: becomesLatest,
     },
   });
+  // Compare-and-set on the pointer read above: if another run moved it meanwhile, fail so the step retries against
+  // the new value instead of overwriting it. A retry after this write sees its own version and leaves it alone.
+  const updated = await deps.db
+    .update(packages)
+    .set(listing)
+    .where(
+      and(
+        eq(packages.id, ingested.packageId),
+        current.latestVersion === null ? isNull(packages.latestVersion) : eq(packages.latestVersion, current.latestVersion),
+      ),
+    )
+    .returning({ id: packages.id });
+  if (updated.length === 0) throw new Error(`latest version of ${resolved.name} changed during finalize; retrying`);
+
   await deps.db.batch([
-    deps.db.update(packages).set(listing).where(eq(packages.id, ingested.packageId)),
     deps.db
       .update(packageSubmissions)
       .set({ status: "indexed", error: null, updatedAt: now })

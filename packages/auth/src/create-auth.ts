@@ -20,10 +20,21 @@ export const DEVICE_VERIFICATION_PAGE = "/device";
 export const DEVICE_CLIENT_IDS = ["clark-market-cli", "clarkcant-desktop"] as const;
 
 /**
- * Scopes an OAuth client may request. `admin` is deliberately absent: agents and third-party clients never receive
- * admin authority through OAuth; an admin who needs automation mints a scoped personal API token instead.
+ * Scopes an OAuth client must never hold. Clients register themselves without an account (RFC 7591), so one
+ * consent click must not hand them account control:
+ * - `admin`: agents and third-party clients never receive admin authority; an admin who needs automation mints a
+ *   scoped personal API token from a browser session instead.
+ * - `account:write`: it covers minting personal API tokens (which outlive the grant and its revocation), revoking
+ *   OAuth grants and accepting invitations. Account changes stay with signed-in sessions. Clients that link a
+ *   ClarkCant install (e.g. ClarkCant desktop) request the narrow `devices:link` scope instead.
  */
-export const OAUTH_API_SCOPES: readonly ApiScope[] = API_SCOPES.filter((scope) => scope !== "admin");
+const OAUTH_WITHHELD_SCOPES: readonly ApiScope[] = ["admin", "account:write"];
+
+/**
+ * Scopes an OAuth client may request. Access tokens resolve to this list ∩ the grant, so a token issued before a
+ * scope was withheld loses it too.
+ */
+export const OAUTH_API_SCOPES: readonly ApiScope[] = API_SCOPES.filter((scope) => !OAUTH_WITHHELD_SCOPES.includes(scope));
 export const OIDC_SCOPES = ["openid", "profile", "email", "offline_access"] as const;
 
 /**

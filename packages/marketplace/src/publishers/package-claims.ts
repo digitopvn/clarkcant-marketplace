@@ -14,6 +14,7 @@ import type { z } from "zod";
 
 import { prepareAuditEvent } from "../audit/audit-writer";
 import type { MarketplaceDeps } from "../deps";
+import { syncPackageSearchDocument } from "../search/search-index";
 import { parseInput } from "../validation";
 import { authorizePublisher } from "./publisher-service";
 import type { VerificationPorts } from "./verification-ports";
@@ -77,6 +78,8 @@ export async function claimPackage(
         .set({ publisherId: publisher.id, verifiedPublisher: true, updatedAt: now })
         .where(eq(packages.id, listing.id)),
     ]);
+    // The publisher's name is part of the package's search text.
+    await syncPackageSearchDocument(deps, listing.id);
   } else {
     await deps.db.batch(writes);
   }

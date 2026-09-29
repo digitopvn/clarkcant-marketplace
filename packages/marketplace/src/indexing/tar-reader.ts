@@ -13,16 +13,29 @@ export interface TarLimits {
   maxTotalBytes: number;
   /** Number of headers (files, directories, metadata) processed. */
   maxEntries: number;
+  /**
+   * Total bytes of selected entries kept in memory. Per-entry caps alone do not bound memory: a gzip bomb can hold
+   * many small-compressed entries that each pass their own cap. Defaults to {@link DEFAULT_MAX_KEPT_BYTES}.
+   */
+  maxKeptBytes?: number;
 }
 
-export const DEFAULT_TAR_LIMITS: TarLimits = { maxTotalBytes: 128 * 1024 * 1024, maxEntries: 20_000 };
+export const DEFAULT_MAX_KEPT_BYTES = 32 * 1024 * 1024;
+
+export const DEFAULT_TAR_LIMITS: TarLimits = {
+  maxTotalBytes: 128 * 1024 * 1024,
+  maxEntries: 20_000,
+  maxKeptBytes: DEFAULT_MAX_KEPT_BYTES,
+};
 
 export interface TarSelection {
   /**
-   * Called with each regular file's path (as stored, e.g. `package/README.md`). Return the maximum number of bytes to
-   * keep for it, or `null` to skip it. A kept entry larger than its cap is recorded as oversized, not truncated.
+   * Called with each regular file's path (as stored, e.g. `package/README.md`) and its declared size. Return the
+   * maximum number of bytes to keep for it, or `null` to skip it. A kept entry larger than its cap is recorded as
+   * oversized, not truncated. Called once per entry in archive order, so a selector may keep state (for example to
+   * skip duplicate paths or stop after a count).
    */
-  select(path: string): number | null;
+  select(path: string, size: number): number | null;
 }
 
 export interface TarEntry {
@@ -39,10 +52,16 @@ export class TarFormatError extends Error {
   }
 }
 
-/** Pulls exact byte counts out of a chunked stream without concatenating the whole archive. */
+/**
+ * Pulls exact byte counts out of a chunked stream without concatenating the whole archive. Incoming chunks are
+ * queued and copied once, into the slice a caller asks for, so reading a large entry stays linear in its size.
+ */
 class StreamReader {
   private readonly reader: ReadableStreamDefaultReader<Uint8Array>;
-  private buffer: Uint8Array = new Uint8Array(0);
+  private readonly chunks: Uint8Array[] = [];
+  /** Offset into `chunks[0]` of the first unread byte. */
+  private head = 0;
+  private buffered = 0;
   private done = false;
   private readonly maxTotalBytes: number;
   consumed = 0;
@@ -53,17 +72,15 @@ class StreamReader {
   }
 
   private async fill(minimum: number): Promise<void> {
-    while (this.buffer.length < minimum && !this.done) {
+    while (this.buffered < minimum && !this.done) {
       const { value, done } = await this.reader.read();
       if (done) {
         this.done = true;
         break;
       }
       if (value.length === 0) continue;
-      const merged = new Uint8Array(this.buffer.length + value.length);
-      merged.set(this.buffer);
-      merged.set(value, this.buffer.length);
-      this.buffer = merged;
+      this.chunks.push(value);
+      this.buffered += value.length;
     }
   }
 
@@ -74,27 +91,49 @@ class StreamReader {
     }
   }
 
+  /** Drops `count` buffered bytes, copying them into `into` when given. */
+  private take(count: number, into?: Uint8Array): void {
+    let remaining = count;
+    let offset = 0;
+    while (remaining > 0) {
+      const chunk = this.chunks[0];
+      if (!chunk) throw new TarFormatError("archive is truncated");
+      const available = chunk.length - this.head;
+      const step = Math.min(available, remaining);
+      into?.set(chunk.subarray(this.head, this.head + step), offset);
+      offset += step;
+      remaining -= step;
+      if (step === available) {
+        this.chunks.shift();
+        this.head = 0;
+      } else {
+        this.head += step;
+      }
+    }
+    this.buffered -= count;
+  }
+
   /** Returns exactly `count` bytes, or null at a clean end of stream. Throws on a truncated stream. */
   async read(count: number): Promise<Uint8Array | null> {
     await this.fill(count);
-    if (this.buffer.length === 0 && this.done) return null;
-    if (this.buffer.length < count) throw new TarFormatError("archive is truncated");
-    const out = this.buffer.slice(0, count);
-    this.buffer = this.buffer.subarray(count);
+    if (this.buffered === 0 && this.done) return null;
+    if (this.buffered < count) throw new TarFormatError("archive is truncated");
     this.account(count);
+    const out = new Uint8Array(count);
+    this.take(count, out);
     return out;
   }
 
   async skip(count: number): Promise<void> {
     let remaining = count;
     while (remaining > 0) {
-      if (this.buffer.length === 0) {
+      if (this.buffered === 0) {
         await this.fill(1);
-        if (this.buffer.length === 0) throw new TarFormatError("archive is truncated");
+        if (this.buffered === 0) throw new TarFormatError("archive is truncated");
       }
-      const step = Math.min(remaining, this.buffer.length);
-      this.buffer = this.buffer.subarray(step);
+      const step = Math.min(remaining, this.buffered);
       this.account(step);
+      this.take(step);
       remaining -= step;
     }
   }
@@ -162,6 +201,8 @@ export async function readTar(
 ): Promise<TarEntry[]> {
   const reader = new StreamReader(stream, limits.maxTotalBytes);
   const entries: TarEntry[] = [];
+  const maxKeptBytes = limits.maxKeptBytes ?? DEFAULT_MAX_KEPT_BYTES;
+  let keptBytes = 0;
   let pendingPath: string | null = null;
   let headers = 0;
   try {
@@ -190,15 +231,22 @@ export async function readTar(
       pendingPath = null;
 
       const isFile = type === "0" || type === "\0" || type === "7";
-      const cap = isFile ? selection.select(storedPath) : null;
+      const cap = isFile ? selection.select(storedPath, size) : null;
       if (cap === null || size > cap) {
         await reader.skip(padded(size));
         if (cap !== null) entries.push({ path: storedPath, size, bytes: null });
         continue;
       }
-      const data = await reader.read(padded(size));
+      keptBytes += size;
+      if (keptBytes > maxKeptBytes) throw new TarFormatError(`selected files exceed ${maxKeptBytes} bytes in total`);
+      if (size === 0) {
+        entries.push({ path: storedPath, size, bytes: new Uint8Array(0) });
+        continue;
+      }
+      const data = await reader.read(size);
       if (!data) throw new TarFormatError("archive is truncated");
-      entries.push({ path: storedPath, size, bytes: data.slice(0, size) });
+      await reader.skip(padded(size) - size);
+      entries.push({ path: storedPath, size, bytes: data });
     }
   } finally {
     await reader.cancel();

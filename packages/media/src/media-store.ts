@@ -1,5 +1,5 @@
-import { media, type Database } from "@marketplace/db";
-import { sql } from "drizzle-orm";
+import { media, pageRevisions, type Database } from "@marketplace/db";
+import { and, notExists, sql } from "drizzle-orm";
 
 import { sniffImage } from "./image-sniffing.ts";
 
@@ -128,23 +128,42 @@ export async function storeGeneratedMedia(
 }
 
 /**
- * Deletes a media row and its object when nothing references it any more (account deletion, cleanup). Tables that
- * point at media declare `on delete restrict`, so a still-referenced row makes D1 refuse the delete; that is
- * reported as `false` and the object is kept.
+ * Deletes a media row and its object when nothing references it any more (account deletion, cleanup), returning
+ * whether it was deleted. Two kinds of reference keep it:
+ * - rows with a foreign key (`on delete restrict`, e.g. package previews): D1 refuses the delete;
+ * - page revisions, which name media by id inside their JSON document (media and logo blocks, `meta.image`). Any
+ *   revision counts, draft or published, because a rollback or publish can make it live again.
+ * The page check and the delete are one statement, so a page saved concurrently cannot lose its image.
  */
 export async function deleteMediaIfUnreferenced(deps: MediaDeps, mediaId: string): Promise<boolean> {
   const row = await deps.db.query.media.findFirst({ where: (entry, { eq }) => eq(entry.id, mediaId) });
   if (!row) return false;
+  let deleted: { id: string }[];
   try {
-    await deps.db.delete(media).where(eqMediaId(mediaId));
+    deleted = await deps.db
+      .delete(media)
+      .where(and(eqMediaId(mediaId), notExists(pageRevisionsReferencing(deps, mediaId))))
+      .returning({ id: media.id });
   } catch (error) {
     if (error instanceof Error && /FOREIGN KEY constraint failed/i.test(`${error.message} ${String(error.cause ?? "")}`)) {
       return false;
     }
     throw error;
   }
+  if (deleted.length === 0) return false;
   await deps.bucket.delete(row.r2Key);
   return true;
+}
+
+/**
+ * Page revisions whose document contains the media id as a JSON string. Media ids are `[A-Za-z0-9_-]` only, so the
+ * quoted id never needs escaping and cannot match inside a longer id.
+ */
+function pageRevisionsReferencing(deps: MediaDeps, mediaId: string) {
+  return deps.db
+    .select({ id: pageRevisions.id })
+    .from(pageRevisions)
+    .where(sql`instr(${pageRevisions.document}, ${JSON.stringify(mediaId)}) > 0`);
 }
 
 function eqMediaId(mediaId: string) {

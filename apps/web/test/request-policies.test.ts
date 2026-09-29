@@ -73,17 +73,23 @@ describe("rate limit buckets", () => {
     expect(bucket("GET", "/sitemap.xml")).toBeNull();
   });
 
-  it("keys callers by hashed credential before IP, and never exposes the credential", async () => {
-    const withToken = new Request("https://market.example/api/v1/me", { headers: { authorization: "Bearer cc_secret", "cf-connecting-ip": "203.0.113.9" } });
-    const tokenKey = await rateLimitKey(withToken, "api");
-    expect(tokenKey).toMatch(/^api:t:[0-9a-f]{32}$/);
-    expect(tokenKey).not.toContain("cc_secret");
+  it("keys callers by client IP only, so unverified credentials cannot mint fresh budgets", () => {
+    const ip = { "cf-connecting-ip": "203.0.113.9" };
+    const anonymous = new Request("https://market.example/api/v1/search", { headers: ip });
+    expect(rateLimitKey(anonymous, "search")).toBe("search:ip:203.0.113.9");
 
-    const withSession = new Request("https://market.example/api/v1/me", { headers: { cookie: "a=1; __Secure-better-auth.session_token=abc.def" } });
-    expect(await rateLimitKey(withSession, "api")).toMatch(/^api:s:[0-9a-f]{32}$/);
+    // Rotating random bearer tokens or session cookies from one IP must all land in that IP's bucket.
+    for (const headers of [
+      { ...ip, authorization: `Bearer ${crypto.randomUUID()}` },
+      { ...ip, authorization: `Bearer cmk_${crypto.randomUUID()}` },
+      { ...ip, cookie: `__Secure-better-auth.session_token=${crypto.randomUUID()}` },
+      { ...ip, cookie: `better-auth.session_token=${crypto.randomUUID()}`, authorization: "Bearer x" },
+    ]) {
+      const key = rateLimitKey(new Request("https://market.example/api/v1/search", { headers }), "search");
+      expect(key).toBe("search:ip:203.0.113.9");
+    }
 
-    const anonymous = new Request("https://market.example/api/v1/search", { headers: { "cf-connecting-ip": "203.0.113.9" } });
-    expect(await rateLimitKey(anonymous, "search")).toBe("search:ip:203.0.113.9");
+    expect(rateLimitKey(new Request("https://market.example/api/v1/me"), "api")).toBe("api:ip:unknown");
   });
 
   it("answers 429 in the API error shape with Retry-After", async () => {

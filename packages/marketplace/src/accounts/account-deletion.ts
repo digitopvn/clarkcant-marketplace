@@ -16,14 +16,17 @@ import {
   oauthConsent,
   oauthRefreshToken,
   organization,
+  packages,
   publishers,
   user,
 } from "@marketplace/db";
 import { count, eq, inArray } from "drizzle-orm";
 
 import { prepareAuditEvent } from "../audit/audit-writer";
+import { chunked } from "../d1-limits";
 import type { MarketplaceDeps } from "../deps";
 import { countMembers } from "../publishers/publisher-service";
+import { syncPackageSearchDocument } from "../search/search-index";
 
 /**
  * Deletes one media object (D1 row and R2 object) unless something still references it, returning whether it was
@@ -33,8 +36,9 @@ import { countMembers } from "../publishers/publisher-service";
 export type DeleteMediaIfUnreferenced = (mediaId: string) => Promise<boolean>;
 
 /**
- * Removes the account's media: unreferenced objects are deleted; objects still used elsewhere (e.g. a public
- * listing preview) are kept and lose their owner when the user row goes (`owner_user_id` is `ON DELETE SET NULL`).
+ * Removes the account's media: unreferenced objects are deleted; objects still used elsewhere (a listing preview, or
+ * any page revision, draft or published) are kept and lose their owner when the user row goes (`owner_user_id` is
+ * `ON DELETE SET NULL`). Pages therefore never lose images because their uploader left.
  */
 export async function removeOwnedMedia(
   deps: MarketplaceDeps,
@@ -130,6 +134,12 @@ export async function deleteAccount(
   });
 
   const publisherIds = soleMemberPublishers.flatMap((row) => (row.publisherId === null ? [] : [row.publisherId]));
+  // Listings of removed publishers lose their publisher (`ON DELETE SET NULL`), which changes their search text.
+  const orphanedPackageIds: string[] = [];
+  for (const ids of chunked(publisherIds)) {
+    const rows = await deps.db.select({ id: packages.id }).from(packages).where(inArray(packages.publisherId, ids));
+    orphanedPackageIds.push(...rows.map((row) => row.id));
+  }
   await deps.db.batch([
     // Revocation is explicit rather than left to cascades, so it holds even for rows without a foreign key.
     deps.db.delete(deviceCode).where(eq(deviceCode.userId, userId)),
@@ -145,6 +155,7 @@ export async function deleteAccount(
     deps.db.delete(user).where(eq(user.id, userId)),
     audit.statement,
   ]);
+  for (const packageId of orphanedPackageIds) await syncPackageSearchDocument(deps, packageId);
 
   return {
     deleted: true,

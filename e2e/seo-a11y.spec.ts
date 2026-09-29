@@ -183,6 +183,13 @@ test.describe("share bar", () => {
     const copied = await page.evaluate(() => navigator.clipboard.readText());
     // Windows clipboards store line breaks as CRLF.
     expect(copied).toMatch(/^https?:\/\/\S+\r?\nMarkdown: https?:\/\/\S+\.md$/);
+
+    // The twin is fetched from the page's own origin, so it works on preview and secondary hosts under connect-src 'self'.
+    const twinRequest = page.waitForRequest((request) => new URL(request.url()).pathname.endsWith(".md"));
+    await bar.getByRole("button", { name: "Copy as Markdown" }).click();
+    expect(new URL((await twinRequest).url()).origin).toBe(new URL(page.url()).origin);
+    await expect(bar.getByRole("status")).toHaveText("Page copied as Markdown.");
+    expect(await page.evaluate(() => navigator.clipboard.readText())).toMatch(/^# /m);
   });
 });
 

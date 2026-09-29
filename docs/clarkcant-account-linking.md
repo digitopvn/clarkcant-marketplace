@@ -16,7 +16,7 @@ expired or revoked bearer answers `401` (it never falls back to anonymous).
 |---|---|---|
 | Session cookie | Browser sign-in on `/login` | All of the account's scopes; mutations need a same-origin `Origin` (CSRF) |
 | `Bearer cmk_…` personal token | Account page or `POST /api/v1/me/tokens` | The scopes chosen at creation (a subset of the account's) |
-| `Bearer <OAuth access token>` (JWT) | OAuth 2.1 authorization code + PKCE | The granted OAuth scopes; never `admin` |
+| `Bearer <OAuth access token>` (JWT) | OAuth 2.1 authorization code + PKCE | The granted OAuth scopes; never `admin` or `account:write` |
 | `Bearer <session token>` | Device authorization flow (CLI) | The account's scopes without `admin` |
 
 Admin authority is only available through a browser session of an allowlisted account (`ADMIN_EMAILS`) or a
@@ -31,7 +31,9 @@ sessions.
   (`token_endpoint_auth_method: "none"`). Loopback redirect URIs (`http://127.0.0.1:<port>/…`) require
   `application_type: "native"`.
 - Authorization: `GET /api/auth/oauth2/authorize` with `response_type=code`, `code_challenge_method=S256`,
-  `resource=<origin>/api/v1` and scopes such as `openid profile account:read account:write offline_access`.
+  `resource=<origin>/api/v1` and scopes such as `openid profile account:read devices:link offline_access`.
+  OAuth clients are never offered `admin` or `account:write`: a desktop client links its install with the narrow
+  `devices:link` scope, which cannot mint tokens or change the account.
   Signed-out users are sent to `/login`, then to the consent page `/oauth/consent`.
 - Token: `POST /api/auth/oauth2/token`. The access token is a JWT with audience `<origin>/api/v1`; send it as
   `Authorization: Bearer <token>` to `/api/v1/*`.
@@ -51,7 +53,8 @@ sessions.
 
 ## Linking a local principal
 
-With any credential that holds `account:write`:
+With a credential that holds `devices:link` (what OAuth clients request) or `account:write` (sessions, including
+the device-flow session token, and `cmk_` tokens created with it):
 
 ```http
 POST /api/v1/me/devices/link
@@ -64,7 +67,9 @@ Content-Type: application/json
 - `localPrincipalId` must match `prin_[A-Za-z0-9]{1,120}`; `deviceLabel` is 1–80 characters.
 - Linking is idempotent per account and principal: repeating it updates the label and re-activates a previously
   unlinked principal. Uniqueness is per account: each account holds at most one link per principal.
-- `GET /api/v1/me/devices` lists active links (`account:read`).
-- `DELETE /api/v1/me/devices/{id}` unlinks (`account:write`, answers `204`). The link row is kept as revoked for
+- `GET /api/v1/me/devices` lists active links (`devices:link` or `account:read`).
+- `DELETE /api/v1/me/devices/{id}` unlinks (`devices:link` or `account:write`, answers `204`). The link row is kept as revoked for
   the audit trail; nothing on the device changes.
 - Every link and unlink writes an audit event. Deleting the account removes all links.
+- `devices:link` reaches only the caller's own links. Creating or revoking API tokens, revoking OAuth grants,
+  reading the profile and deleting the account all answer `403` to it.

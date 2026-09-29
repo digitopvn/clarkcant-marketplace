@@ -64,8 +64,13 @@ const fallback = shareFallbackText(payload);
     }
   }
 
+  /**
+   * Fetches the Markdown twin from the current origin. The payload URL is absolute and built from PUBLIC_SITE_URL, so on
+   * a preview alias or secondary host it would be cross-origin and blocked by `connect-src 'self'`; only its path is used.
+   */
   async function fetchMarkdown(url: string): Promise<string> {
-    const response = await fetch(url, { headers: { accept: "text/markdown" } });
+    const { pathname, search } = new URL(url, window.location.href);
+    const response = await fetch(`${pathname}${search}`, { headers: { accept: "text/markdown" } });
     if (!response.ok) throw new Error(`Markdown request failed with ${response.status}`);
     return response.text();
   }

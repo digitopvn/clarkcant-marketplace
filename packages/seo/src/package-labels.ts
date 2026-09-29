@@ -103,6 +103,7 @@ const CHECK_LABELS: Record<string, string> = {
   provenance: "Build provenance",
   "install-scripts": "Install scripts",
   previews: "Preview images",
+  readme: "README",
 };
 
 export function checkLabel(check: PackageSecurityCheck): string {
@@ -127,6 +128,8 @@ export function checkSummary(check: PackageSecurityCheck): string {
     }
     case "previews":
       return "Some preview images were not valid PNG, JPEG, GIF or WebP files and were skipped.";
+    case "readme":
+      return "The README was too large to show here, so it was left out. Read it on npm or in the package's repository.";
     default:
       return check.result === "pass" ? "Passed." : "Needs attention.";
   }

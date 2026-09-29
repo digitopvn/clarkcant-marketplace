@@ -49,12 +49,12 @@ Local overrides for `wrangler.jsonc` vars go in `apps/web/.dev.vars` (see `.dev.
 | `pnpm verify` | `lint` + `typecheck` + `test` |
 | `pnpm lint` / `pnpm typecheck` | ESLint (flat config) / `tsc --noEmit` per package and `astro check` |
 | `pnpm test` | Vitest projects; service and API tests run against a real D1 with migrations applied |
-| `pnpm test:e2e` | Playwright (smoke, SEO surfaces, headers, share, consent, axe, 375px); starts the dev server, or targets `BASE_URL`. `E2E_BUILT=1` adds the CSP and JavaScript-budget checks against a production build served by `astro preview` |
+| `pnpm test:e2e` | Playwright (smoke, SEO surfaces, headers, share, consent, axe, 375px); starts the dev server, or targets `BASE_URL`. `E2E_BUILT=1` adds the CSP and JavaScript-budget checks against a production build (`astro preview`, or staging after each deploy); `E2E_ADMIN_EMAIL`/`E2E_ADMIN_PASSWORD` enable the page-builder flow ([deployment](docs/deployment.md#configuration)) |
 | `pnpm index:local <name>@<version> --tarball <file.tgz>` | Index a real package tarball into the local database through the production pipeline, without contacting npm |
 | `pnpm db:generate` | Generate a migration from the Drizzle schema in `packages/db/src/schema` |
 | `pnpm migrations:check` | Fail when the schema has changes without a committed migration |
 | `pnpm db:migrate:local` | Apply migrations to the local D1 database |
-| `pnpm db:migrate:staging` / `:production` | Apply migrations remotely (CI runs these on deploy) |
+| `pnpm db:migrate:staging` / `:production` | Apply migrations remotely (CI runs these on deploy); they pass `--config wrangler.jsonc` so a local build of another environment cannot re-target them |
 | `pnpm cf-typegen` | Regenerate `worker-configuration.d.ts` after editing a `wrangler.jsonc` |
 | `pnpm --filter @marketplace/db auth:schema` | Regenerate the Better Auth tables (`packages/db/src/schema/auth.ts`) |
 
@@ -83,7 +83,7 @@ e2e               Playwright tests
 ## Deployment
 
 Details in [docs/deployment.md](docs/deployment.md). In short: CI deploys `dev` to staging and `main` to production (`.github/workflows/deploy.yml`) after the
-same verification CI runs on every branch. Required GitHub configuration: secrets
-`CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`, and a `SITE_URL` variable on the `staging` and
-`production` environments. Set `PUBLIC_SITE_URL` in the matching `env.*.vars` of both
+same verification CI runs on every branch. Required GitHub configuration: the repository secret
+`CLOUDFLARE_API_TOKEN`, the repository variable `CLOUDFLARE_ACCOUNT_ID`, and a `SITE_URL` variable on the `staging` and
+`production` environments. Same-repository PRs get a preview version of the staging Worker (staging data, no migrations). Set `PUBLIC_SITE_URL` in the matching `env.*.vars` of both
 `wrangler.jsonc` files; Workers refuse requests while it is empty.

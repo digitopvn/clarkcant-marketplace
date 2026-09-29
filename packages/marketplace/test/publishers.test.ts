@@ -1,5 +1,5 @@
 import { MarketplaceError } from "@marketplace/contracts";
-import { auditEvents, packages, publishers } from "@marketplace/db";
+import { auditEvents, packages, packagesFts, publishers } from "@marketplace/db";
 import { eq } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
 
@@ -158,6 +158,9 @@ describe("package claims", () => {
 
     const [listing] = await deps.db.select().from(packages).where(eq(packages.id, packageId));
     expect(listing).toMatchObject({ publisherId: publisher.id, verifiedPublisher: true });
+    // The new publisher's name is searchable on the package right away.
+    const [searchRow] = await deps.db.select({ publisher: packagesFts.publisher }).from(packagesFts).where(eq(packagesFts.packageId, packageId));
+    expect(searchRow?.publisher).toContain("Claimer");
     expect(await listOwnedPackages(deps, owner)).toEqual([expect.objectContaining({ name, publisher: expect.objectContaining({ id: publisher.id }) })]);
     await expectError(claimPackage(deps, owner, publisher.id, { packageName: name, method: "repository" }, ports({}).value), "conflict");
     const audit = await deps.db.select().from(auditEvents).where(eq(auditEvents.subjectId, packageId));

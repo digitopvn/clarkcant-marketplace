@@ -1,8 +1,10 @@
 // Web Worker: Astro SSR, the public REST API (/api/v1/*) and /openapi.json.
 //
 // The top level is the local development configuration used by `astro dev` (local state only). Deploys select an
-// environment at build time: `CLOUDFLARE_ENV=staging astro build && wrangler deploy` (the `--env` flag is ignored
-// for this Worker because the build writes a flattened config). Bindings are not inherited by environments, so
+// environment at build time: `CLOUDFLARE_ENV=staging astro build && wrangler deploy`. The build writes a flattened
+// config plus a redirect (.wrangler/deploy/config.json) that wrangler follows whenever `--config` is absent, so a
+// later `--env` cannot switch environments. Commands that must honour `--env` (the `db:migrate:*` scripts and the
+// deploy workflow's D1 steps) pass `--config wrangler.jsonc` to read this file instead. Bindings are not inherited by environments, so
 // every environment repeats all of them. INDEX_WORKFLOW points at the jobs Worker, which must be deployed first.
 {
   "$schema": "../../node_modules/wrangler/config-schema.json",

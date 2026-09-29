@@ -1,13 +1,16 @@
 import { env } from "cloudflare:workers";
 import type { MiddlewareHandler } from "astro";
 
-import { logEvent, requestIdOf } from "./request-log";
+import { logEvent, logPath, requestIdOf } from "./request-log";
 
 /**
  * Per-caller request budgets backed by the Cloudflare Rate Limiting bindings declared in wrangler.jsonc. Counters
- * are per Cloudflare location and eventually consistent, so these are abuse brakes, not exact quotas. Callers are
- * keyed by credential (API token or session) when one is present, so users behind one NAT do not share a budget,
- * and by client IP otherwise.
+ * are per Cloudflare location and eventually consistent, so these are abuse brakes, not exact quotas.
+ *
+ * Callers are keyed by client IP (`CF-Connecting-IP`, set by Cloudflare's edge, not by the client). This middleware
+ * runs before any authentication, so any credential it could see is unverified: keying on it would let a client
+ * mint a fresh budget per request with random `Authorization` or session-cookie values. Callers sharing an IP
+ * (NAT, CI egress) therefore share a budget.
  */
 
 export type RateLimitBucket = "auth" | "publish" | "search" | "api";
@@ -33,20 +36,12 @@ export function rateLimitBucket(method: string, url: URL): RateLimitBucket | nul
   return null;
 }
 
-const SESSION_COOKIE = /(?:^|;\s*)((?:__Secure-)?better-auth\.session_token)=([^;]+)/;
-
-async function sha256Hex(value: string): Promise<string> {
-  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
-  return Array.from(new Uint8Array(digest).slice(0, 16), (byte) => byte.toString(16).padStart(2, "0")).join("");
-}
-
-/** A stable, non-reversible caller key. Credentials are hashed so they never reach the rate-limit service. */
-export async function rateLimitKey(request: Request, bucket: RateLimitBucket): Promise<string> {
-  const authorization = request.headers.get("authorization");
-  if (authorization) return `${bucket}:t:${await sha256Hex(authorization)}`;
-  const session = SESSION_COOKIE.exec(request.headers.get("cookie") ?? "")?.[2];
-  if (session) return `${bucket}:s:${await sha256Hex(session)}`;
-  const ip = request.headers.get("cf-connecting-ip") ?? "unknown";
+/**
+ * The caller key: the client IP, never a credential (credentials are unverified at this point). Outside
+ * Cloudflare's edge (local dev, tests) the header is absent and every caller shares the `unknown` budget.
+ */
+export function rateLimitKey(request: Request, bucket: RateLimitBucket): string {
+  const ip = request.headers.get("cf-connecting-ip")?.trim() || "unknown";
   return `${bucket}:ip:${ip}`;
 }
 
@@ -82,7 +77,7 @@ export const rateLimit: MiddlewareHandler = async (context, next) => {
 
   let allowed = true;
   try {
-    const outcome = await limiter.limit({ key: await rateLimitKey(context.request, bucket) });
+    const outcome = await limiter.limit({ key: rateLimitKey(context.request, bucket) });
     allowed = outcome.success;
   } catch (error) {
     // The limiter is an availability dependency, not a security boundary: an outage must not take the API down.
@@ -94,6 +89,6 @@ export const rateLimit: MiddlewareHandler = async (context, next) => {
   }
   if (allowed) return next();
 
-  logEvent("warn", "rate_limited", { requestId: requestIdOf(context.locals), bucket, path: context.url.pathname });
+  logEvent("warn", "rate_limited", { requestId: requestIdOf(context.locals), bucket, path: logPath(context.url.pathname) });
   return rateLimitedResponse(requestIdOf(context.locals), bucket);
 };

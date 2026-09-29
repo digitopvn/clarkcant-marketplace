@@ -12,8 +12,8 @@ node apps/cli/bin/clark-market.mjs info @acme/clock-widget
 
 | Option | Meaning |
 | --- | --- |
-| `--json` | Print one JSON document per result (errors as `{"error": {code, message, status, requestId}}` on stdout) |
-| `--api-url <url>` | Marketplace origin. Default: `$CLARK_MARKET_API_URL`, else production |
+| `--json` | Print one JSON document per line on stdout: one per result, and errors as `{"error": {code, message, status, requestId}}`. `login` prints two lines: `{"status":"pending", verificationUri, verificationUriComplete, userCode, expiresIn}` before it waits, then `{"status":"logged_in", ...}` (or an error); read the last line for the outcome |
+| `--api-url <url>` | Marketplace origin. Default: `$CLARK_MARKET_API_URL`, else production. Must be `https`; plain `http` is accepted only for `localhost`, `*.localhost`, `127.0.0.1` and `[::1]` (otherwise exit code 2), so tokens never travel in clear text |
 | `--help`, `--version` | Usage and version |
 
 Environment variables:
@@ -58,7 +58,7 @@ logins carry the account's scopes except `admin`. Admin accounts still hold the 
 | --- | --- |
 | 0 | Success |
 | 1 | Unexpected error |
-| 2 | Usage error: unknown command or option, or an invalid argument or `--api-url` |
+| 2 | Usage error: unknown command or option, or an invalid argument or `--api-url` (including a non-https remote origin) |
 | 3 | Not logged in, credential rejected, missing scope, or login denied or expired |
 | 4 | Not found |
 | 5 | Conflict: stale revision or idempotency clash |

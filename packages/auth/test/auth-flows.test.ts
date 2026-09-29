@@ -197,7 +197,7 @@ describe("device authorization (CLI login)", () => {
     const resolved = await resolveRequestAuth(auth, withBearer(access_token));
     expect(resolved.credential).toBe("session_bearer");
     expect(resolved.actor).toMatchObject({ type: "user" });
-    expect(resolved.actor.scopes).toContain("account:write");
+    expect(resolved.actor.scopes).toEqual(expect.arrayContaining(["account:write", "devices:link"]));
     expect(resolved.actor.scopes).not.toContain("admin");
   }, 20_000);
 });
@@ -218,8 +218,29 @@ describe("OAuth 2.1 provider (ClarkCant desktop / MCP groundwork)", () => {
     const metadata = (await response.json()) as Record<string, unknown>;
     expect(metadata.issuer).toBe(`${ORIGIN}${AUTH_BASE_PATH}`);
     expect(metadata.code_challenge_methods_supported).toContain("S256");
-    expect(metadata.scopes_supported).toEqual(expect.arrayContaining(["openid", "account:write"]));
+    expect(metadata.scopes_supported).toEqual(expect.arrayContaining(["openid", "account:read", "pages:write"]));
     expect(metadata.scopes_supported).not.toContain("admin");
+    // Account changes (minting personal tokens, revoking grants) stay with signed-in sessions.
+    expect(metadata.scopes_supported).not.toContain("account:write");
+    // ClarkCant desktop links its install with this narrow scope instead.
+    expect(metadata.scopes_supported).toContain("devices:link");
+  });
+
+  it("refuses to register a client that asks for account:write", async () => {
+    const response = await runtime().auth.handler(
+      authRequest("/oauth2/register", {
+        body: {
+          client_name: "Greedy client",
+          application_type: "native",
+          redirect_uris: ["http://127.0.0.1:8766/callback"],
+          token_endpoint_auth_method: "none",
+          grant_types: ["authorization_code"],
+          response_types: ["code"],
+          scope: "openid account:read account:write",
+        },
+      }),
+    );
+    expect(response.status).toBeGreaterThanOrEqual(400);
   });
 
   it("runs register → authorize (PKCE) → consent → token and resolves the access token as a scoped actor", async () => {
@@ -237,7 +258,7 @@ describe("OAuth 2.1 provider (ClarkCant desktop / MCP groundwork)", () => {
           token_endpoint_auth_method: "none",
           grant_types: ["authorization_code", "refresh_token"],
           response_types: ["code"],
-          scope: "openid account:read account:write",
+          scope: "openid account:read publishers:write",
         },
       }),
     );
@@ -249,7 +270,7 @@ describe("OAuth 2.1 provider (ClarkCant desktop / MCP groundwork)", () => {
       response_type: "code",
       client_id: client.client_id,
       redirect_uri: redirectUri,
-      scope: "openid account:read account:write",
+      scope: "openid account:read publishers:write",
       state: "state-123",
       code_challenge: challenge,
       code_challenge_method: "S256",
@@ -289,7 +310,7 @@ describe("OAuth 2.1 provider (ClarkCant desktop / MCP groundwork)", () => {
     expect(resolved.credential).toBe("oauth");
     const actor: Actor = resolved.actor;
     expect(actor).toMatchObject({ type: "token", tokenId: `oauth:${client.client_id}` });
-    expect(actor.scopes.sort()).toEqual(["account:read", "account:write"]);
+    expect(actor.scopes.sort()).toEqual(["account:read", "publishers:write"]);
 
     // A tampered token fails signature verification.
     await expect(resolveRequestAuth(runtime(), withBearer(`${tokens.access_token}x`))).rejects.toMatchObject({

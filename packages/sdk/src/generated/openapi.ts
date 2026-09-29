@@ -422,7 +422,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Linked ClarkCant installs */
+        /** Linked ClarkCant installs (`devices:link` or `account:read`) */
         get: operations["listClarkCantDevices"];
         put?: never;
         post?: never;
@@ -442,7 +442,7 @@ export interface paths {
         get?: never;
         put?: never;
         post?: never;
-        /** Unlink a ClarkCant install */
+        /** Unlink a ClarkCant install (`devices:link` or `account:write`) */
         delete: operations["unlinkClarkCantDevice"];
         options?: never;
         head?: never;
@@ -458,7 +458,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Link a ClarkCant install (local principal prin_*) to this account; idempotent per principal */
+        /** Link a ClarkCant install (local principal prin_*) to this account; idempotent per principal. Needs `devices:link` (offered to OAuth clients) or `account:write` */
         post: operations["linkClarkCantDevice"];
         delete?: never;
         options?: never;
@@ -492,7 +492,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Accept an invitation addressed to the caller's email */
+        /** Accept an invitation addressed to the caller's email (the email must be verified) */
         post: operations["acceptInvitation"];
         delete?: never;
         options?: never;
@@ -702,7 +702,7 @@ export interface paths {
         /** Personal API tokens (metadata only; plaintext is never shown again) */
         get: operations["listApiTokens"];
         put?: never;
-        /** Create a scoped personal API token; the plaintext `token` is returned once */
+        /** Create a scoped personal API token (needs a signed-in session, not a token); the plaintext `token` is returned once, so a replayed Idempotency-Key answers 409 instead of repeating it */
         post: operations["createApiToken"];
         delete?: never;
         options?: never;
@@ -720,7 +720,7 @@ export interface paths {
         get?: never;
         put?: never;
         post?: never;
-        /** Revoke a personal API token */
+        /** Revoke a personal API token (needs a signed-in session, not a token) */
         delete: operations["revokeApiToken"];
         options?: never;
         head?: never;
@@ -5296,7 +5296,7 @@ export interface operations {
                         name: string;
                         /** @enum {string} */
                         role: "admin" | "user";
-                        scopes: ("packages:read" | "packages:submit" | "packages:curate" | "publishers:read" | "publishers:write" | "pages:read" | "pages:write" | "pages:publish" | "media:write" | "account:read" | "account:write" | "admin")[];
+                        scopes: ("packages:read" | "packages:submit" | "packages:curate" | "publishers:read" | "publishers:write" | "pages:read" | "pages:write" | "pages:publish" | "media:write" | "account:read" | "account:write" | "devices:link" | "admin")[];
                     };
                 };
             };
@@ -5439,7 +5439,7 @@ export interface operations {
                     };
                 };
             };
-            /** @description Conflicts with the current state (`conflict`) */
+            /** @description Conflicts with the current state (`conflict`), or a request with this Idempotency-Key is still running (`idempotency_in_progress`) */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -5645,7 +5645,10 @@ export interface operations {
     linkClarkCantDevice: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description Makes retries safe; replayed for 24 hours */
+                "idempotency-key"?: string;
+            };
             path?: never;
             cookie?: never;
         };
@@ -5724,6 +5727,40 @@ export interface operations {
                     };
                 };
             };
+            /** @description Conflicts with the current state (`conflict`), or a request with this Idempotency-Key is still running (`idempotency_in_progress`) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        error: {
+                            /** @enum {string} */
+                            code: "bad_request" | "validation_failed" | "unauthorized" | "forbidden" | "not_found" | "conflict" | "idempotency_key_reused" | "idempotency_in_progress" | "rate_limited" | "configuration_error" | "not_implemented" | "internal_error";
+                            details?: unknown;
+                            message: string;
+                            requestId: string;
+                        };
+                    };
+                };
+            };
+            /** @description Idempotency-Key reused with a different request (`idempotency_key_reused`) */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        error: {
+                            /** @enum {string} */
+                            code: "bad_request" | "validation_failed" | "unauthorized" | "forbidden" | "not_found" | "conflict" | "idempotency_key_reused" | "idempotency_in_progress" | "rate_limited" | "configuration_error" | "not_implemented" | "internal_error";
+                            details?: unknown;
+                            message: string;
+                            requestId: string;
+                        };
+                    };
+                };
+            };
             /** @description Server error */
             500: {
                 headers: {
@@ -5770,7 +5807,7 @@ export interface operations {
                             name: string;
                             /** Format: date-time */
                             revokedAt: string | null;
-                            scopes: ("packages:read" | "packages:submit" | "packages:curate" | "publishers:read" | "publishers:write" | "pages:read" | "pages:write" | "pages:publish" | "media:write" | "account:read" | "account:write" | "admin")[];
+                            scopes: ("packages:read" | "packages:submit" | "packages:curate" | "publishers:read" | "publishers:write" | "pages:read" | "pages:write" | "pages:publish" | "media:write" | "account:read" | "account:write" | "devices:link" | "admin")[];
                         }[];
                         auditEvents: {
                             action: string;
@@ -5907,7 +5944,10 @@ export interface operations {
     acceptInvitation: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description Makes retries safe; replayed for 24 hours */
+                "idempotency-key"?: string;
+            };
             path: {
                 id: string;
             };
@@ -5987,8 +6027,25 @@ export interface operations {
                     };
                 };
             };
-            /** @description Conflicts with the current state (`conflict`) */
+            /** @description Conflicts with the current state (`conflict`), or a request with this Idempotency-Key is still running (`idempotency_in_progress`) */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        error: {
+                            /** @enum {string} */
+                            code: "bad_request" | "validation_failed" | "unauthorized" | "forbidden" | "not_found" | "conflict" | "idempotency_key_reused" | "idempotency_in_progress" | "rate_limited" | "configuration_error" | "not_implemented" | "internal_error";
+                            details?: unknown;
+                            message: string;
+                            requestId: string;
+                        };
+                    };
+                };
+            };
+            /** @description Idempotency-Key reused with a different request (`idempotency_key_reused`) */
+            422: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -6362,7 +6419,10 @@ export interface operations {
     createPublisher: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description Makes retries safe; replayed for 24 hours */
+                "idempotency-key"?: string;
+            };
             path?: never;
             cookie?: never;
         };
@@ -6452,8 +6512,25 @@ export interface operations {
                     };
                 };
             };
-            /** @description Conflicts with the current state (`conflict`) */
+            /** @description Conflicts with the current state (`conflict`), or a request with this Idempotency-Key is still running (`idempotency_in_progress`) */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        error: {
+                            /** @enum {string} */
+                            code: "bad_request" | "validation_failed" | "unauthorized" | "forbidden" | "not_found" | "conflict" | "idempotency_key_reused" | "idempotency_in_progress" | "rate_limited" | "configuration_error" | "not_implemented" | "internal_error";
+                            details?: unknown;
+                            message: string;
+                            requestId: string;
+                        };
+                    };
+                };
+            };
+            /** @description Idempotency-Key reused with a different request (`idempotency_key_reused`) */
+            422: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -6597,7 +6674,10 @@ export interface operations {
     claimPackage: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description Makes retries safe; replayed for 24 hours */
+                "idempotency-key"?: string;
+            };
             path: {
                 publisherId: string;
             };
@@ -6704,8 +6784,25 @@ export interface operations {
                     };
                 };
             };
-            /** @description Conflicts with the current state (`conflict`) */
+            /** @description Conflicts with the current state (`conflict`), or a request with this Idempotency-Key is still running (`idempotency_in_progress`) */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        error: {
+                            /** @enum {string} */
+                            code: "bad_request" | "validation_failed" | "unauthorized" | "forbidden" | "not_found" | "conflict" | "idempotency_key_reused" | "idempotency_in_progress" | "rate_limited" | "configuration_error" | "not_implemented" | "internal_error";
+                            details?: unknown;
+                            message: string;
+                            requestId: string;
+                        };
+                    };
+                };
+            };
+            /** @description Idempotency-Key reused with a different request (`idempotency_key_reused`) */
+            422: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -6844,7 +6941,10 @@ export interface operations {
     addPublisherDomain: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description Makes retries safe; replayed for 24 hours */
+                "idempotency-key"?: string;
+            };
             path: {
                 publisherId: string;
             };
@@ -6944,8 +7044,25 @@ export interface operations {
                     };
                 };
             };
-            /** @description Conflicts with the current state (`conflict`) */
+            /** @description Conflicts with the current state (`conflict`), or a request with this Idempotency-Key is still running (`idempotency_in_progress`) */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        error: {
+                            /** @enum {string} */
+                            code: "bad_request" | "validation_failed" | "unauthorized" | "forbidden" | "not_found" | "conflict" | "idempotency_key_reused" | "idempotency_in_progress" | "rate_limited" | "configuration_error" | "not_implemented" | "internal_error";
+                            details?: unknown;
+                            message: string;
+                            requestId: string;
+                        };
+                    };
+                };
+            };
+            /** @description Idempotency-Key reused with a different request (`idempotency_key_reused`) */
+            422: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -6983,7 +7100,10 @@ export interface operations {
     verifyPublisherDomain: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description Makes retries safe; replayed for 24 hours */
+                "idempotency-key"?: string;
+            };
             path: {
                 childId: string;
                 publisherId: string;
@@ -7061,8 +7181,25 @@ export interface operations {
                     };
                 };
             };
-            /** @description Conflicts with the current state (`conflict`) */
+            /** @description Conflicts with the current state (`conflict`), or a request with this Idempotency-Key is still running (`idempotency_in_progress`) */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        error: {
+                            /** @enum {string} */
+                            code: "bad_request" | "validation_failed" | "unauthorized" | "forbidden" | "not_found" | "conflict" | "idempotency_key_reused" | "idempotency_in_progress" | "rate_limited" | "configuration_error" | "not_implemented" | "internal_error";
+                            details?: unknown;
+                            message: string;
+                            requestId: string;
+                        };
+                    };
+                };
+            };
+            /** @description Idempotency-Key reused with a different request (`idempotency_key_reused`) */
+            422: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -7201,7 +7338,10 @@ export interface operations {
     inviteMember: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description Makes retries safe; replayed for 24 hours */
+                "idempotency-key"?: string;
+            };
             path: {
                 publisherId: string;
             };
@@ -7307,8 +7447,25 @@ export interface operations {
                     };
                 };
             };
-            /** @description Conflicts with the current state (`conflict`) */
+            /** @description Conflicts with the current state (`conflict`), or a request with this Idempotency-Key is still running (`idempotency_in_progress`) */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        error: {
+                            /** @enum {string} */
+                            code: "bad_request" | "validation_failed" | "unauthorized" | "forbidden" | "not_found" | "conflict" | "idempotency_key_reused" | "idempotency_in_progress" | "rate_limited" | "configuration_error" | "not_implemented" | "internal_error";
+                            details?: unknown;
+                            message: string;
+                            requestId: string;
+                        };
+                    };
+                };
+            };
+            /** @description Idempotency-Key reused with a different request (`idempotency_key_reused`) */
+            422: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -7549,7 +7706,10 @@ export interface operations {
     linkPublisherRepository: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description Makes retries safe; replayed for 24 hours */
+                "idempotency-key"?: string;
+            };
             path: {
                 publisherId: string;
             };
@@ -7656,8 +7816,25 @@ export interface operations {
                     };
                 };
             };
-            /** @description Conflicts with the current state (`conflict`) */
+            /** @description Conflicts with the current state (`conflict`), or a request with this Idempotency-Key is still running (`idempotency_in_progress`) */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        error: {
+                            /** @enum {string} */
+                            code: "bad_request" | "validation_failed" | "unauthorized" | "forbidden" | "not_found" | "conflict" | "idempotency_key_reused" | "idempotency_in_progress" | "rate_limited" | "configuration_error" | "not_implemented" | "internal_error";
+                            details?: unknown;
+                            message: string;
+                            requestId: string;
+                        };
+                    };
+                };
+            };
+            /** @description Idempotency-Key reused with a different request (`idempotency_key_reused`) */
+            422: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -7695,7 +7872,10 @@ export interface operations {
     verifyPublisherRepository: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description Makes retries safe; replayed for 24 hours */
+                "idempotency-key"?: string;
+            };
             path: {
                 childId: string;
                 publisherId: string;
@@ -7775,8 +7955,25 @@ export interface operations {
                     };
                 };
             };
-            /** @description Conflicts with the current state (`conflict`) */
+            /** @description Conflicts with the current state (`conflict`), or a request with this Idempotency-Key is still running (`idempotency_in_progress`) */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        error: {
+                            /** @enum {string} */
+                            code: "bad_request" | "validation_failed" | "unauthorized" | "forbidden" | "not_found" | "conflict" | "idempotency_key_reused" | "idempotency_in_progress" | "rate_limited" | "configuration_error" | "not_implemented" | "internal_error";
+                            details?: unknown;
+                            message: string;
+                            requestId: string;
+                        };
+                    };
+                };
+            };
+            /** @description Idempotency-Key reused with a different request (`idempotency_key_reused`) */
+            422: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -7838,7 +8035,7 @@ export interface operations {
                             name: string;
                             /** Format: date-time */
                             revokedAt: string | null;
-                            scopes: ("packages:read" | "packages:submit" | "packages:curate" | "publishers:read" | "publishers:write" | "pages:read" | "pages:write" | "pages:publish" | "media:write" | "account:read" | "account:write" | "admin")[];
+                            scopes: ("packages:read" | "packages:submit" | "packages:curate" | "publishers:read" | "publishers:write" | "pages:read" | "pages:write" | "pages:publish" | "media:write" | "account:read" | "account:write" | "devices:link" | "admin")[];
                         }[];
                     };
                 };
@@ -7899,7 +8096,10 @@ export interface operations {
     createApiToken: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description Makes retries safe; replayed for 24 hours */
+                "idempotency-key"?: string;
+            };
             path?: never;
             cookie?: never;
         };
@@ -7909,7 +8109,7 @@ export interface operations {
                     /** @default 90 */
                     expiresInDays?: number;
                     name: string;
-                    scopes: ("packages:read" | "packages:submit" | "packages:curate" | "publishers:read" | "publishers:write" | "pages:read" | "pages:write" | "pages:publish" | "media:write" | "account:read" | "account:write" | "admin")[];
+                    scopes: ("packages:read" | "packages:submit" | "packages:curate" | "publishers:read" | "publishers:write" | "pages:read" | "pages:write" | "pages:publish" | "media:write" | "account:read" | "account:write" | "devices:link" | "admin")[];
                 };
             };
         };
@@ -7931,7 +8131,7 @@ export interface operations {
                         name: string;
                         /** Format: date-time */
                         revokedAt: string | null;
-                        scopes: ("packages:read" | "packages:submit" | "packages:curate" | "publishers:read" | "publishers:write" | "pages:read" | "pages:write" | "pages:publish" | "media:write" | "account:read" | "account:write" | "admin")[];
+                        scopes: ("packages:read" | "packages:submit" | "packages:curate" | "publishers:read" | "publishers:write" | "pages:read" | "pages:write" | "pages:publish" | "media:write" | "account:read" | "account:write" | "devices:link" | "admin")[];
                         token: string;
                     };
                 };
@@ -7987,8 +8187,25 @@ export interface operations {
                     };
                 };
             };
-            /** @description Conflicts with the current state (`conflict`) */
+            /** @description Conflicts with the current state (`conflict`), or a request with this Idempotency-Key is still running (`idempotency_in_progress`) */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        error: {
+                            /** @enum {string} */
+                            code: "bad_request" | "validation_failed" | "unauthorized" | "forbidden" | "not_found" | "conflict" | "idempotency_key_reused" | "idempotency_in_progress" | "rate_limited" | "configuration_error" | "not_implemented" | "internal_error";
+                            details?: unknown;
+                            message: string;
+                            requestId: string;
+                        };
+                    };
+                };
+            };
+            /** @description Idempotency-Key reused with a different request (`idempotency_key_reused`) */
+            422: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -8051,7 +8268,7 @@ export interface operations {
                         name: string;
                         /** Format: date-time */
                         revokedAt: string | null;
-                        scopes: ("packages:read" | "packages:submit" | "packages:curate" | "publishers:read" | "publishers:write" | "pages:read" | "pages:write" | "pages:publish" | "media:write" | "account:read" | "account:write" | "admin")[];
+                        scopes: ("packages:read" | "packages:submit" | "packages:curate" | "publishers:read" | "publishers:write" | "pages:read" | "pages:write" | "pages:publish" | "media:write" | "account:read" | "account:write" | "devices:link" | "admin")[];
                     };
                 };
             };
@@ -8944,4 +9161,4 @@ export interface operations {
 }
 
 /** SHA-256 of the OpenAPI document these types were generated from (without `servers`). */
-export const OPENAPI_DOCUMENT_SHA256 = "9ea7576505bf4ee6bfbbd6d5105e09a46c36baed2a12de094610597020ffb50e";
+export const OPENAPI_DOCUMENT_SHA256 = "81567ee9504ec8090c1b9418321e252df4d550ae07fb205746997f41c46908bb";

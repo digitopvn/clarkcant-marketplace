@@ -5,6 +5,7 @@ import {
   requireUser,
   toAuditActor,
   type Actor,
+  type AuditActor,
   type PageDocument,
 } from "@marketplace/contracts";
 import { pagePublications, pageRevisions, pages } from "@marketplace/db";
@@ -22,6 +23,8 @@ import { and, desc, eq, inArray, max, sql } from "drizzle-orm";
 
 import { prepareAuditEvent } from "../audit/audit-writer";
 import type { MarketplaceDeps } from "../deps";
+import { chunked } from "../d1-limits";
+import { isConstraintViolation } from "../db-errors";
 import { withIdempotency } from "../idempotency/idempotency-store";
 import { parseInput } from "../validation";
 import { createPageDataPort } from "./page-data-port";
@@ -135,48 +138,76 @@ export async function createPage(
 ): Promise<PageState> {
   requireScope(actor, "pages:write");
   const input = parseInput(createPageInputSchema, rawInput);
-  return idempotent(deps, actor, "create_page", input, options, async () => {
-    const document = parsePageDocument(
-      input.document ?? {
-        schemaVersion: 1,
-        layout: defaultLayoutForKind(input.kind),
-        meta: { title: input.title ?? titleFromSlug(input.slug) },
-        blocks: [],
-      },
-    );
-    const pageId = deps.ids("page");
-    const revisionId = deps.ids("rev");
-    const now = deps.now();
-    const audit = prepareAuditEvent(deps, {
-      actor: toAuditActor(actor),
-      action: "page.created",
-      subject: { type: "page", id: pageId },
-      idempotencyKey: options.idempotencyKey,
-      data: { slug: input.slug, kind: input.kind, revisionId },
-    });
-    try {
-      await deps.db.batch([
-        deps.db.insert(pages).values({ id: pageId, slug: input.slug, kind: input.kind, title: document.meta.title, createdAt: now, updatedAt: now }),
-        deps.db.insert(pageRevisions).values({
-          id: revisionId,
-          pageId,
-          number: 1,
-          document,
-          authorId: actor.userId ?? null,
-          parentRevisionId: null,
-          createdAt: now,
-        }),
-        deps.db.update(pages).set({ currentDraftRevisionId: revisionId }).where(eq(pages.id, pageId)),
-        audit.statement,
-      ]);
-    } catch (error) {
-      if (isConstraintViolation(error, "pages.slug")) {
-        throw new MarketplaceError("conflict", `a page with slug "${input.slug}" already exists`, { details: { slug: input.slug } });
-      }
-      throw error;
-    }
-    return loadPageState(deps, pageId);
+  return idempotent(deps, actor, "create_page", input, options, () => insertPage(deps, principalOf(actor), input, options));
+}
+
+/**
+ * Who a command is recorded as: the audit identity, and the account (if any) credited as author or publisher.
+ * System commands (e.g. seeding default pages from the jobs Worker) have an audit identity but no account.
+ */
+export interface CommandPrincipal {
+  audit: AuditActor;
+  userId: string | null;
+}
+
+function principalOf(actor: Actor): CommandPrincipal {
+  return { audit: toAuditActor(actor), userId: actor.userId ?? null };
+}
+
+/**
+ * Creates a page as a system component. For trusted server code only (it performs no scope check); it is not
+ * exported from the package's public entry point.
+ */
+export function createPageAsSystem(deps: MarketplaceDeps, system: AuditActor, rawInput: CreatePageInput): Promise<PageState> {
+  return insertPage(deps, { audit: system, userId: null }, parseInput(createPageInputSchema, rawInput));
+}
+
+async function insertPage(
+  deps: MarketplaceDeps,
+  principal: CommandPrincipal,
+  input: ReturnType<typeof createPageInputSchema.parse>,
+  options: CommandOptions = {},
+): Promise<PageState> {
+  const document = parsePageDocument(
+    input.document ?? {
+      schemaVersion: 1,
+      layout: defaultLayoutForKind(input.kind),
+      meta: { title: input.title ?? titleFromSlug(input.slug) },
+      blocks: [],
+    },
+  );
+  const pageId = deps.ids("page");
+  const revisionId = deps.ids("rev");
+  const now = deps.now();
+  const audit = prepareAuditEvent(deps, {
+    actor: principal.audit,
+    action: "page.created",
+    subject: { type: "page", id: pageId },
+    idempotencyKey: options.idempotencyKey,
+    data: { slug: input.slug, kind: input.kind, revisionId },
   });
+  try {
+    await deps.db.batch([
+      deps.db.insert(pages).values({ id: pageId, slug: input.slug, kind: input.kind, title: document.meta.title, createdAt: now, updatedAt: now }),
+      deps.db.insert(pageRevisions).values({
+        id: revisionId,
+        pageId,
+        number: 1,
+        document,
+        authorId: principal.userId,
+        parentRevisionId: null,
+        createdAt: now,
+      }),
+      deps.db.update(pages).set({ currentDraftRevisionId: revisionId }).where(eq(pages.id, pageId)),
+      audit.statement,
+    ]);
+  } catch (error) {
+    if (isConstraintViolation(error, "pages.slug")) {
+      throw new MarketplaceError("conflict", `a page with slug "${input.slug}" already exists`, { details: { slug: input.slug } });
+    }
+    throw error;
+  }
+  return loadPageState(deps, pageId);
 }
 
 /** Saves a whole document as the new draft revision (the builder's "Save draft"). */
@@ -191,8 +222,9 @@ export async function savePageDraft(
   return idempotent(deps, actor, "save_page_draft", input, options, async () => {
     const page = await loadPage(deps, input.pageId);
     assertCurrentDraft(page, input.expectedRevisionId);
+    const base = await loadRevision(deps, page.id, input.expectedRevisionId);
     const document = parsePageDocument(input.document);
-    await appendRevision(deps, actor, page, document, options, { command: "save_page_draft" });
+    await appendRevision(deps, actor, page, base, document, options, { command: "save_page_draft" });
     return loadPageState(deps, page.id);
   });
 }
@@ -228,7 +260,7 @@ export async function patchPage(
       throw error;
     }
     const document = parsePageDocument(applied.document);
-    await appendRevision(deps, actor, page, document, options, {
+    await appendRevision(deps, actor, page, draft, document, options, {
       command: "patch_page",
       operations: input.operations.map((operation) => operation.op),
     });
@@ -281,31 +313,43 @@ export async function publishPage(
 ): Promise<PageState> {
   requireScope(actor, "pages:publish");
   const input = parseInput(publishPageInputSchema, rawInput);
-  return idempotent(deps, actor, "publish_page", input, options, async () => {
-    const page = await loadPage(deps, input.pageId);
-    if (page.currentDraftRevisionId !== input.revisionId) {
-      throw new MarketplaceError("conflict", "only the current draft revision can be published; reload the page", {
-        details: { currentRevisionId: page.currentDraftRevisionId },
-      });
-    }
-    if (page.publishedRevisionId === input.revisionId) return loadPageState(deps, page.id);
+  return idempotent(deps, actor, "publish_page", input, options, () => publishDraft(deps, principalOf(actor), input, options));
+}
 
-    const revision = await loadRevision(deps, page.id, input.revisionId);
-    const document = parsePageDocument(storedDocument(revision));
-    const rendered = await renderPage(document, {
-      mode: "preview",
-      port: createPageDataPort(deps),
-      siteUrl: "",
-      path: pagePath(page.slug),
+/** Publishes a page's current draft as a system component. Trusted server code only; see {@link createPageAsSystem}. */
+export function publishPageAsSystem(deps: MarketplaceDeps, system: AuditActor, rawInput: PublishPageInput): Promise<PageState> {
+  return publishDraft(deps, { audit: system, userId: null }, parseInput(publishPageInputSchema, rawInput));
+}
+
+async function publishDraft(
+  deps: MarketplaceDeps,
+  principal: CommandPrincipal,
+  input: ReturnType<typeof publishPageInputSchema.parse>,
+  options: CommandOptions = {},
+): Promise<PageState> {
+  const page = await loadPage(deps, input.pageId);
+  if (page.currentDraftRevisionId !== input.revisionId) {
+    throw new MarketplaceError("conflict", "only the current draft revision can be published; reload the page", {
+      details: { currentRevisionId: page.currentDraftRevisionId },
     });
-    if (rendered.diagnostics.length > 0) {
-      throw new MarketplaceError("validation_failed", "the page has unresolved content; fix it before publishing", {
-        details: rendered.diagnostics.map((message) => ({ path: [], message })),
-      });
-    }
-    await movePublishedPointer(deps, actor, page, revision, "publish", options);
-    return loadPageState(deps, page.id);
+  }
+  if (page.publishedRevisionId === input.revisionId) return loadPageState(deps, page.id);
+
+  const revision = await loadRevision(deps, page.id, input.revisionId);
+  const document = parsePageDocument(storedDocument(revision));
+  const rendered = await renderPage(document, {
+    mode: "preview",
+    port: createPageDataPort(deps),
+    siteUrl: "",
+    path: pagePath(page.slug),
   });
+  if (rendered.diagnostics.length > 0) {
+    throw new MarketplaceError("validation_failed", "the page has unresolved content; fix it before publishing", {
+      details: rendered.diagnostics.map((message) => ({ path: [], message })),
+    });
+  }
+  await movePublishedPointer(deps, principal, page, revision, "publish", options);
+  return loadPageState(deps, page.id);
 }
 
 /** Restores a previously published revision as the live page (recorded as a `rollback` publication). */
@@ -338,7 +382,7 @@ export async function rollbackPage(
     }
     // The stored document must still be renderable by this build; rollback never publishes what cannot render.
     parsePageDocument(storedDocument(revision));
-    await movePublishedPointer(deps, actor, page, revision, "rollback", options);
+    await movePublishedPointer(deps, principalOf(actor), page, revision, "rollback", options);
     return loadPageState(deps, page.id);
   });
 }
@@ -493,30 +537,29 @@ function assertCurrentDraft(page: PageRow, expectedRevisionId: string): void {
 }
 
 /**
- * Appends an immutable revision and points the draft at it, atomically with its audit event. Two concurrent saves
- * from the same base compute the same revision number; the unique `(page_id, number)` index lets only one win.
+ * Appends an immutable revision on top of `base` (the draft the caller edited) and points the draft at it,
+ * atomically with its audit event. The new number is always `base.number + 1`: the draft is always the page's newest
+ * revision, so any save that landed after `base` was read already holds that number, and the unique
+ * `(page_id, number)` index rejects this one as a conflict instead of silently dropping the other edit.
  */
 async function appendRevision(
   deps: MarketplaceDeps,
   actor: Actor,
   page: PageRow,
+  base: RevisionRow,
   document: PageDocument,
   options: CommandOptions,
   data: Record<string, unknown>,
 ): Promise<string> {
-  const [latest] = await deps.db
-    .select({ number: max(pageRevisions.number) })
-    .from(pageRevisions)
-    .where(eq(pageRevisions.pageId, page.id));
   const revisionId = deps.ids("rev");
-  const number = (latest?.number ?? 0) + 1;
+  const number = base.number + 1;
   const now = deps.now();
   const audit = prepareAuditEvent(deps, {
     actor: toAuditActor(actor),
     action: "page.draft_saved",
     subject: { type: "page", id: page.id },
     idempotencyKey: options.idempotencyKey,
-    data: { ...data, revisionId, number, parentRevisionId: page.currentDraftRevisionId },
+    data: { ...data, revisionId, number, parentRevisionId: base.id },
   });
   try {
     await deps.db.batch([
@@ -526,7 +569,7 @@ async function appendRevision(
         number,
         document,
         authorId: actor.userId ?? null,
-        parentRevisionId: page.currentDraftRevisionId,
+        parentRevisionId: base.id,
         createdAt: now,
       }),
       deps.db.update(pages).set({ currentDraftRevisionId: revisionId, title: document.meta.title, updatedAt: now }).where(eq(pages.id, page.id)),
@@ -548,7 +591,7 @@ async function appendRevision(
  */
 async function movePublishedPointer(
   deps: MarketplaceDeps,
-  actor: Actor,
+  principal: CommandPrincipal,
   page: PageRow,
   revision: RevisionRow,
   action: "publish" | "rollback",
@@ -561,7 +604,7 @@ async function movePublishedPointer(
       ? sql`${pages.currentDraftRevisionId} = ${revision.id} and ${pages.publishedRevisionId} is ${page.publishedRevisionId}`
       : sql`${pages.publishedRevisionId} is ${page.publishedRevisionId}`;
   const audit = prepareAuditEvent(deps, {
-    actor: toAuditActor(actor),
+    actor: principal.audit,
     action: action === "publish" ? "page.published" : "page.rolled_back",
     subject: { type: "page", id: page.id },
     idempotencyKey: options.idempotencyKey,
@@ -575,7 +618,7 @@ async function movePublishedPointer(
             id: sql`${publicationId}`.as("id"),
             pageId: pages.id,
             revisionId: sql`case when ${precondition} then ${revision.id} else null end`.as("revision_id"),
-            publishedBy: sql`${actor.userId ?? null}`.as("published_by"),
+            publishedBy: sql`${principal.userId}`.as("published_by"),
             publishedAt: sql`${now.getTime()}`.as("published_at"),
             action: sql`${action}`.as("action"),
           })
@@ -594,12 +637,17 @@ async function movePublishedPointer(
 }
 
 async function lastPublicationTimes(deps: MarketplaceDeps, pageId: string, revisionIds: string[]): Promise<Map<string, Date>> {
-  if (revisionIds.length === 0) return new Map();
-  const rows = await deps.db
-    .select({ revisionId: pagePublications.revisionId, publishedAt: max(pagePublications.publishedAt) })
-    .from(pagePublications)
-    .where(and(eq(pagePublications.pageId, pageId), inArray(pagePublications.revisionId, revisionIds)))
-    .groupBy(pagePublications.revisionId);
+  const rows = [];
+  // Chunked so the page id plus the id list stays under D1's bound-parameter limit.
+  for (const ids of chunked(revisionIds)) {
+    rows.push(
+      ...(await deps.db
+        .select({ revisionId: pagePublications.revisionId, publishedAt: max(pagePublications.publishedAt) })
+        .from(pagePublications)
+        .where(and(eq(pagePublications.pageId, pageId), inArray(pagePublications.revisionId, ids)))
+        .groupBy(pagePublications.revisionId)),
+    );
+  }
   const times = new Map<string, Date>();
   for (const row of rows) {
     // `max()` over a timestamp column comes back as the raw integer; normalise it to a Date.
@@ -643,17 +691,4 @@ function toRevisionSummary(row: RevisionRow, page: PageRow, lastPublishedAt: Dat
 function titleFromSlug(slug: string): string {
   const last = slug.split("/").at(-1) ?? slug;
   return last.replace(/-/g, " ").replace(/^./, (char) => char.toUpperCase());
-}
-
-/** D1 reports constraint failures in the message; drizzle may wrap the original error as `cause`. */
-function isConstraintViolation(error: unknown, column: string): boolean {
-  for (let current: unknown = error, depth = 0; current && depth < 5; depth += 1) {
-    if (current instanceof Error) {
-      if (/constraint failed/i.test(current.message) && current.message.includes(column)) return true;
-      current = current.cause;
-    } else {
-      break;
-    }
-  }
-  return false;
 }

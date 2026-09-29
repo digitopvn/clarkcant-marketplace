@@ -17,6 +17,9 @@ export const apiScopeSchema = z.enum([
   "media:write",
   "account:read",
   "account:write",
+  // Link, list and unlink the caller's own ClarkCant installs, and nothing else. It exists so OAuth and device-login
+  // clients (e.g. ClarkCant desktop) can link a device without `account:write`, which they are never offered.
+  "devices:link",
   "admin",
 ]);
 export type ApiScope = z.infer<typeof apiScopeSchema>;

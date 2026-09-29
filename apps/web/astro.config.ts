@@ -31,7 +31,8 @@ export default defineConfig({
     imageService: "passthrough",
   }),
   integrations: [react()],
-  // Content Security Policy for every server-rendered page, emitted as a <meta> tag with a hash for each script and
+  // Content Security Policy for every server-rendered page, sent as a response header on this adapter (not a <meta>
+  // tag; checked on staging), with a hash for each script and
   // style Astro renders (islands, bundled scripts, inlined CSS). Inline content Astro does not process itself is
   // allowed by hash at runtime (src/server/csp.ts). Directives that only work as a header (frame-ancestors) are sent
   // by src/middleware/security-headers.ts. Not active under `astro dev` (Vite serves unhashed modules).

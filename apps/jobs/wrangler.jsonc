@@ -10,6 +10,10 @@
   "compatibility_date": "2026-08-15",
   "compatibility_flags": ["nodejs_compat"],
   "observability": { "enabled": true },
+  // CPU budget per invocation (Workers Paid; up to 300000). README rendering (markdown + sanitising up to the size
+  // limit) and tarball parsing run here, so the budget is pinned rather than left to the plan default. `limits` is
+  // inheritable, but each environment below repeats it so every deployment states it.
+  "limits": { "cpu_ms": 30000 },
   "vars": {
     "PUBLIC_SITE_URL": "http://localhost:4321",
     "ENVIRONMENT": "development",
@@ -38,10 +42,11 @@
   "workflows": [
     { "name": "clarkcant-marketplace-index-local", "binding": "INDEX_WORKFLOW", "class_name": "IndexPackageWorkflow" }
   ],
-  "triggers": { "crons": ["17 */6 * * *"] },
+  "triggers": { "crons": ["17 */6 * * *", "*/10 * * * *"] },
   "env": {
     "staging": {
       "name": "clarkcant-marketplace-jobs-staging",
+      "limits": { "cpu_ms": 30000 },
       "vars": {
         // Deployed web origin (workers.dev until a custom domain is chosen). ADMIN_EMAILS is a wrangler secret per env.
         "PUBLIC_SITE_URL": "https://clarkcant-marketplace-web-staging.digitop-vn.workers.dev",
@@ -74,10 +79,11 @@
           "class_name": "IndexPackageWorkflow"
         }
       ],
-      "triggers": { "crons": ["17 */6 * * *"] }
+      "triggers": { "crons": ["17 */6 * * *", "*/10 * * * *"] }
     },
     "production": {
       "name": "clarkcant-marketplace-jobs",
+      "limits": { "cpu_ms": 30000 },
       "vars": {
         // Deployed web origin; see the staging note.
         "PUBLIC_SITE_URL": "https://clarkcant-marketplace-web.digitop-vn.workers.dev",
@@ -106,7 +112,7 @@
       "workflows": [
         { "name": "clarkcant-marketplace-index", "binding": "INDEX_WORKFLOW", "class_name": "IndexPackageWorkflow" }
       ],
-      "triggers": { "crons": ["17 */6 * * *"] }
+      "triggers": { "crons": ["17 */6 * * *", "*/10 * * * *"] }
     }
   }
 }

@@ -13,6 +13,7 @@ import { collectionItems, collections, packages } from "@marketplace/db";
 import { and, asc, eq, max } from "drizzle-orm";
 
 import { prepareAuditEvent } from "../audit/audit-writer";
+import { isConstraintViolation } from "../db-errors";
 import type { MarketplaceDeps } from "../deps";
 import { runCurationCommand, type CurationCommandOptions } from "../packages/curation-command";
 import { findPackageForCuration } from "../packages/curation-commands";
@@ -95,10 +96,18 @@ async function executeCommand(
       if (await findCollection(deps, slug)) throw new MarketplaceError("conflict", `collection "${slug}" already exists`);
       const id = deps.ids("col");
       const { action: _action, ...fields } = command;
-      await deps.db.batch([
-        deps.db.insert(collections).values({ id, slug, ...fields, createdAt: now, updatedAt: now }),
-        audit(id, fields),
-      ]);
+      try {
+        await deps.db.batch([
+          deps.db.insert(collections).values({ id, slug, ...fields, createdAt: now, updatedAt: now }),
+          audit(id, fields),
+        ]);
+      } catch (error) {
+        // A concurrent create of the same slug passes the check above; the unique index decides.
+        if (isConstraintViolation(error, "collections.slug")) {
+          throw new MarketplaceError("conflict", `collection "${slug}" already exists`);
+        }
+        throw error;
+      }
       break;
     }
     case "update": {

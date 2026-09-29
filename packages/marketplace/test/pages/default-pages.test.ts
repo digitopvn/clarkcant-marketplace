@@ -1,8 +1,22 @@
 import { MarketplaceError, type Actor } from "@marketplace/contracts";
 import { pagePublications, pageRevisions, pages, user } from "@marketplace/db";
+import { eq } from "drizzle-orm";
 import { beforeAll, describe, expect, it } from "vitest";
 
-import { LEGAL_PAGES, ensureDefaultPages, getPublishedPage, renderPageDocument, type MarketplaceDeps } from "../../src";
+import {
+  DEFAULT_PAGES_ACTOR,
+  LEGAL_PAGES,
+  createPage,
+  ensureDefaultPages,
+  ensureDefaultPagesAsSystem,
+  getPage,
+  getPublishedPage,
+  listAuditEventsForSubject,
+  renderPageDocument,
+  savePageDraft,
+  type MarketplaceDeps,
+} from "../../src";
+import { createPageAsSystem } from "../../src/pages/page-service";
 import { resetDatabase, seedPackage, testDeps } from "../support/seed";
 
 const admin: Actor = { type: "user", userId: "usr_default_admin", scopes: ["admin"] };
@@ -72,5 +86,55 @@ describe("default pages", () => {
     // Undecided company facts are placeholders, never invented.
     expect(await markdown("terms")).toContain("TO BE CONFIRMED");
     expect(await markdown("cookies")).toContain("`cc_consent`");
+  });
+});
+
+describe("default pages seeded by the jobs Worker", () => {
+  const allSlugs = ["home", "about", "terms", "privacy", "cookies", "refunds", "gdpr", "security", "subprocessors"];
+
+  beforeAll(async () => {
+    await deps.db.batch([deps.db.delete(pagePublications), deps.db.delete(pageRevisions), deps.db.delete(pages)]);
+  });
+
+  it("creates and publishes missing pages as the system, leaving existing and edited pages alone", async () => {
+    // An editor already owns /about with their own copy, unpublished.
+    const custom = await createPage(deps, admin, { slug: "about", kind: "custom", title: "Our own about page" });
+    // An interrupted earlier run created /terms but never published it: revision 1, no author, no publication.
+    const legal = LEGAL_PAGES.find((page) => page.slug === "terms");
+    if (!legal) throw new Error("terms page is missing from LEGAL_PAGES");
+    const unfinished = await createPageAsSystem(deps, DEFAULT_PAGES_ACTOR, { slug: "terms", kind: "legal", document: legal.document });
+
+    const first = await ensureDefaultPagesAsSystem(deps);
+    expect(first.existing).toEqual(["about"]);
+    expect(first.created).toEqual(allSlugs.filter((slug) => slug !== "about"));
+    expect(await ensureDefaultPagesAsSystem(deps)).toEqual({ created: [], existing: allSlugs });
+
+    const about = await getPage(deps, admin, custom.page.id);
+    expect(about.page).toMatchObject({ title: "Our own about page", publishedRevisionId: null });
+    expect((await getPublishedPage(deps, "terms")).revisionId).toBe(unfinished.draft.revision.id);
+
+    const privacy = await getPublishedPage(deps, "privacy");
+    expect(privacy.revisionNumber).toBe(1);
+    const events = await listAuditEventsForSubject(deps, { type: "page", id: privacy.page.id });
+    expect(events.map((event) => [event.action, event.actor])).toEqual(
+      expect.arrayContaining([
+        ["page.created", DEFAULT_PAGES_ACTOR],
+        ["page.published", DEFAULT_PAGES_ACTOR],
+      ]),
+    );
+    const [publication] = await deps.db.select().from(pagePublications).where(eq(pagePublications.pageId, privacy.page.id));
+    expect(publication?.publishedBy).toBeNull();
+  });
+
+  it("never republishes a seeded page an editor changed", async () => {
+    const live = await getPublishedPage(deps, "cookies");
+    const state = await getPage(deps, admin, live.page.id);
+    await savePageDraft(deps, admin, {
+      pageId: live.page.id,
+      expectedRevisionId: state.draft.revision.id,
+      document: { ...state.draft.document, meta: { ...state.draft.document.meta, title: "Cookies (edited)" } },
+    });
+    expect(await ensureDefaultPagesAsSystem(deps)).toEqual({ created: [], existing: allSlugs });
+    expect((await getPublishedPage(deps, "cookies")).revisionId).toBe(live.revisionId);
   });
 });

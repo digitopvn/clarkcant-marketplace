@@ -145,6 +145,25 @@ describe("ClarkCant device links", () => {
     expect(await listDeviceLinks(deps, account)).toHaveLength(1);
   });
 
+  it("lets a devices:link credential manage its own links and nothing else on the account", async () => {
+    const account = await seedAccount(deps, { email: uniqueEmail("device-scope") });
+    const linker = tokenActor(account, ["devices:link"]);
+    const link = await linkDevice(deps, linker, { localPrincipalId: "prin_scoped1", deviceLabel: "Desktop" });
+    expect(await listDeviceLinks(deps, linker)).toEqual([expect.objectContaining({ id: link.id })]);
+    await unlinkDevice(deps, linker, link.id);
+
+    await expectError(createApiToken(deps, linker, { name: "x", scopes: ["devices:link"] }), "forbidden");
+    await expectError(revokeOAuthGrant(deps, linker, "some-client"), "forbidden");
+    await expectError(deleteAccount(deps, linker), "forbidden");
+    await expectError(getAccountProfile(deps, linker), "forbidden");
+    await expectError(createPublisher(deps, linker, { slug: "nope-devices", name: "Nope" }), "forbidden");
+
+    // Another account's link stays out of reach.
+    const other = await seedAccount(deps, { email: uniqueEmail("device-other") });
+    const foreign = await linkDevice(deps, other, { localPrincipalId: "prin_foreign1", deviceLabel: "Theirs" });
+    await expectError(unlinkDevice(deps, linker, foreign.id), "not_found");
+  });
+
   it("rejects ids that are not ClarkCant local principals", async () => {
     const account = await seedAccount(deps, { email: uniqueEmail("bad-device") });
     await expectError(linkDevice(deps, account, { localPrincipalId: "user_1", deviceLabel: "x" }), "validation_failed");

@@ -21,6 +21,7 @@ const SCOPE_TEXT: Record<string, string> = {
   offline_access: "Stay connected while you are away (refresh tokens)",
   "account:read": "Read your account, publishers, tokens and linked devices",
   "account:write": "Change your account, link devices and manage your data",
+  "devices:link": "Link, list and unlink ClarkCant installs on your account",
   "packages:submit": "Submit packages on your behalf",
   "publishers:write": "Manage your publishers",
   "pages:write": "Edit marketplace pages you can edit",
@@ -39,6 +40,17 @@ const SCOPE_TEXT: Record<string, string> = {
           <>
             <p>
               <strong>{client.name ?? client.clientId}</strong> wants to access your ClarkCant Marketplace account.
+            </p>
+            {/* Clients register themselves (RFC 7591) and nothing verifies them, so their name and URI are claims. */}
+            <p class="mt-2 text-sm">
+              <span class="rounded border border-line px-1.5 py-0.5 text-xs font-medium text-warning">Unverified client</span>
+              <span class="ml-1 text-muted">
+                Its name{client.uri ? " and website were" : " was"} supplied by the application itself and not checked
+                by ClarkCant. Continue only if you started this sign-in.
+              </span>
+            </p>
+            <p class="mt-1 text-xs text-faint">
+              Client ID <code class="font-mono">{client.clientId}</code>
             </p>
             {client.uri && <p class="mt-1 text-sm text-muted">{client.uri}</p>}
             <ul class="my-5 list-disc space-y-1 pl-5 text-sm">

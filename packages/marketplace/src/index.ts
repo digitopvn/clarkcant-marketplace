@@ -89,12 +89,16 @@ export { createHttpVerificationPorts, type VerificationPorts } from "./publisher
 
 export * from "./pages";
 
+export { D1_MAX_BOUND_PARAMETERS, MAX_IN_LIST_PARAMETERS, chunked } from "./d1-limits";
+
 export {
+  MAX_PUBLISHED_PAGES_LISTED,
   countPublicPackages,
   listPublicPackageIndex,
   listPublishedCollectionIndex,
   listPublishedPages,
   type CollectionIndexEntry,
+  type ListPublishedPagesOptions,
   type PackageIndexEntry,
   type PublishedPageEntry,
 } from "./seo/site-index";

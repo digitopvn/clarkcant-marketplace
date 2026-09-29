@@ -2,6 +2,7 @@ import {
   PACKAGES_PER_SITEMAP,
   SITE_DESCRIPTION,
   SITE_NAME,
+  SITEMAP_PROTOCOL_MAX_URLS,
   canonicalUrl,
   categoryPath,
   collectionPath,
@@ -18,6 +19,7 @@ import {
   type SitemapUrl,
 } from "@marketplace/seo";
 import {
+  MAX_PUBLISHED_PAGES_LISTED,
   countPublicPackages,
   listCategories,
   listFeaturedPackages,
@@ -53,14 +55,46 @@ function indexablePages(pages: readonly PublishedPageEntry[]): PublishedPageEntr
   return pages.filter((page) => !page.document.meta.noindex);
 }
 
+/** Published pages the pages sitemap may list beside the built-in home and {@link STATIC_PATHS}. */
+const MAX_SITEMAP_PAGES = SITEMAP_PROTOCOL_MAX_URLS - STATIC_PATHS.length - 1;
+
+/**
+ * URLs of every indexable published page, read {@link MAX_PUBLISHED_PAGES_LISTED} at a time with `afterSlug` (keyset)
+ * so the sitemap is not cut off at one read's bound. Only each page's URL is kept, never its document, so memory
+ * stays bounded by the URL count, which is capped at the sitemap protocol limit.
+ */
+async function publishedPageUrls(
+  deps: MarketplaceDeps,
+  siteUrl: string,
+): Promise<{ urls: SitemapUrl[]; publishedHome: boolean }> {
+  const urls: SitemapUrl[] = [];
+  let publishedHome = false;
+  let read = 0;
+  let afterSlug: string | undefined;
+  while (read < MAX_SITEMAP_PAGES) {
+    const limit = Math.min(MAX_PUBLISHED_PAGES_LISTED, MAX_SITEMAP_PAGES - read);
+    const batch = await listPublishedPages(deps, afterSlug === undefined ? { limit } : { afterSlug, limit });
+    read += batch.length;
+    for (const page of batch) {
+      if (page.path === "/") publishedHome = true;
+      if (!page.document.meta.noindex) urls.push({ loc: canonicalUrl(siteUrl, page.path), lastmod: page.publishedAt });
+    }
+    const last = batch.at(-1);
+    if (!last || batch.length < limit) break;
+    afterSlug = last.slug;
+  }
+  return { urls, publishedHome };
+}
+
 async function sitemapUrls(deps: MarketplaceDeps, siteUrl: string, segment: SitemapSegment): Promise<SitemapUrl[]> {
   switch (segment.kind) {
     case "pages": {
-      const pages = indexablePages(await listPublishedPages(deps));
+      const { urls: pageUrls, publishedHome } = await publishedPageUrls(deps, siteUrl);
       const urls: SitemapUrl[] = [];
-      if (!pages.some((page) => page.path === "/")) urls.push({ loc: canonicalUrl(siteUrl, "/") });
+      // The built-in home is listed only when no published page owns `/`; a published home that is noindex is omitted.
+      if (!publishedHome) urls.push({ loc: canonicalUrl(siteUrl, "/") });
       for (const path of STATIC_PATHS) urls.push({ loc: canonicalUrl(siteUrl, path) });
-      for (const page of pages) urls.push({ loc: canonicalUrl(siteUrl, page.path), lastmod: page.publishedAt });
+      urls.push(...pageUrls);
       return urls;
     }
     case "categories":

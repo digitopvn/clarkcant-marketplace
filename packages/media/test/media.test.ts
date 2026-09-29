@@ -1,6 +1,7 @@
-import { media } from "@marketplace/db";
+import { media, pageRevisions, pages } from "@marketplace/db";
 import { createDb } from "@marketplace/db";
 import { env } from "cloudflare:workers";
+import { eq } from "drizzle-orm";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import {
@@ -90,6 +91,34 @@ describe("media store", () => {
     expect(await deleteMediaIfUnreferenced(deps(), stored.id)).toBe(true);
     expect(await env.MEDIA.head(stored.r2Key)).toBeNull();
     expect(await deleteMediaIfUnreferenced(deps(), stored.id)).toBe(false);
+  });
+
+  it("keeps media that any page revision refers to by id", async () => {
+    const db = createDb(env.DB);
+    const stored = await storeUntrustedImage(deps(), GIF_1X1);
+    const pageId = `page_media_ref_${Date.now()}`;
+    const revisionId = `rev_media_ref_${Date.now()}`;
+    await db.batch([
+      db.insert(pages).values({ id: pageId, slug: `media-ref-${Date.now()}`, kind: "custom", title: "Logos" }),
+      db.insert(pageRevisions).values({
+        id: revisionId,
+        pageId,
+        number: 1,
+        document: {
+          schemaVersion: 1,
+          layout: { id: "editorial", version: 1 },
+          meta: { title: "Logos" },
+          blocks: [{ id: "l", type: "logo-cloud", version: 1, props: { title: "", logos: [{ name: "Acme", mediaId: stored.id, href: "" }] } }],
+        },
+      }),
+    ]);
+
+    expect(await deleteMediaIfUnreferenced(deps(), stored.id)).toBe(false);
+    expect(await env.MEDIA.head(stored.r2Key)).not.toBeNull();
+    expect(await db.select({ id: media.id }).from(media).where(eq(media.id, stored.id))).toEqual([{ id: stored.id }]);
+
+    await db.batch([db.delete(pageRevisions).where(eq(pageRevisions.id, revisionId)), db.delete(pages).where(eq(pages.id, pageId))]);
+    expect(await deleteMediaIfUnreferenced(deps(), stored.id)).toBe(true);
   });
 });
 

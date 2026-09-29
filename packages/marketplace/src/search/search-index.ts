@@ -4,9 +4,9 @@ import { and, eq } from "drizzle-orm";
 import type { MarketplaceDeps } from "../deps";
 
 /**
- * Write-through maintenance of `packages_fts`. Commands that change a package's searchable text (indexing,
- * curation, publisher rename) call this after their write; there are no triggers, because the document joins text
- * from three tables.
+ * Write-through maintenance of `packages_fts`. Commands that change a package's searchable text (indexing, an
+ * approved publisher claim, account deletion removing a publisher) call this after their write; there are no
+ * triggers, because the document joins text from three tables.
  *
  * The delete and insert run in one D1 batch, which D1 executes atomically, so a reader never sees a package missing
  * from the index or listed twice.

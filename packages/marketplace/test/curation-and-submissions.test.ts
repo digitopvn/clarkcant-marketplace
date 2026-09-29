@@ -1,8 +1,10 @@
 import type { Actor } from "@marketplace/contracts";
 import { auditEvents } from "@marketplace/db";
+import { env } from "cloudflare:workers";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import {
+  createMarketplaceDeps,
   featurePackage,
   getCollection,
   getCollectionState,
@@ -17,6 +19,7 @@ import {
   type MarketplaceDeps,
 } from "../src";
 import { ANONYMOUS_ACTOR, createAccount, indexingDeps, resetIndexingState } from "./support/indexing-fixtures";
+import { instrumentD1 } from "./support/instrumented-d1";
 import { seedPackage } from "./support/seed";
 
 let deps: MarketplaceDeps;
@@ -139,6 +142,24 @@ describe("collection commands", () => {
     await seedPackage(deps, { name: "clock-widget" });
     await seedPackage(deps, { name: "notes-widget" });
     await seedPackage(deps, { name: "hidden-widget", curationStatus: "hidden" });
+  });
+
+  it("answers a create that loses a race for the slug with conflict, not an internal error", async () => {
+    let raced = false;
+    // Another curator creates the same slug after this command checked for it but before it inserts.
+    const instrumented = instrumentD1(env.DB, {
+      beforeExecute: async (sql) => {
+        if (raced || !/^insert into "collections"/i.test(sql)) return;
+        raced = true;
+        await manageCollection(deps, curator, "race-slug", { action: "create", title: "Winner" });
+      },
+    });
+    const slow = { ...createMarketplaceDeps({ d1: instrumented.d1 }), ids: deps.ids };
+    await expect(manageCollection(slow, curator, "race-slug", { action: "create", title: "Loser" })).rejects.toMatchObject({
+      code: "conflict",
+    });
+    expect(raced).toBe(true);
+    expect((await getCollectionState(deps, curator, "race-slug")).title).toBe("Winner");
   });
 
   it("builds, publishes and orders a collection", async () => {

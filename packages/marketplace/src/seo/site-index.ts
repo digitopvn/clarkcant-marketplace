@@ -1,6 +1,6 @@
 import { PUBLIC_CURATION_STATUSES, type PageDocument, type PageKind } from "@marketplace/contracts";
 import { collections, packages, pagePublications, pageRevisions, pages } from "@marketplace/db";
-import { and, asc, count, eq, inArray, isNotNull, max } from "drizzle-orm";
+import { and, asc, count, eq, gt, inArray, isNotNull, sql } from "drizzle-orm";
 
 import type { MarketplaceDeps } from "../deps";
 import { HOME_PAGE_SLUG } from "../pages/page-schemas";
@@ -20,31 +20,63 @@ export interface PublishedPageEntry {
   publishedAt: string;
 }
 
-/** Every published page with its live document, ordered by slug. Includes `noindex` pages; callers filter. */
-export async function listPublishedPages(deps: MarketplaceDeps): Promise<PublishedPageEntry[]> {
-  const rows = await deps.db
-    .select({ id: pages.id, slug: pages.slug, kind: pages.kind, updatedAt: pages.updatedAt, document: pageRevisions.document })
-    .from(pages)
-    .innerJoin(pageRevisions, eq(pageRevisions.id, pages.publishedRevisionId))
-    .where(isNotNull(pages.publishedRevisionId))
-    .orderBy(asc(pages.slug));
-  if (rows.length === 0) return [];
+/** Rows fetched per query while listing published pages; each row carries a whole page document. */
+export const PUBLISHED_PAGES_BATCH = 100;
+/**
+ * Default upper bound for {@link listPublishedPages}: far above the site's own pages, and it keeps one sitemap segment
+ * well under the 50,000-URL sitemap limit and one invocation's memory bounded.
+ */
+export const MAX_PUBLISHED_PAGES_LISTED = 2000;
 
-  const published = await deps.db
-    .select({ pageId: pagePublications.pageId, publishedAt: max(pagePublications.publishedAt) })
-    .from(pagePublications)
-    .where(inArray(pagePublications.pageId, rows.map((row) => row.id)))
-    .groupBy(pagePublications.pageId);
-  // `max()` over a timestamp column comes back as the raw integer; normalise it to a Date.
-  const times = new Map(published.map((row) => [row.pageId, row.publishedAt === null ? null : new Date(row.publishedAt as unknown as number | Date)]));
+export interface ListPublishedPagesOptions {
+  /** Return pages whose slug sorts after this one (keyset pagination). */
+  afterSlug?: string;
+  /** Maximum pages returned. Defaults to {@link MAX_PUBLISHED_PAGES_LISTED}. */
+  limit?: number;
+}
 
-  return rows.map((row) => ({
-    slug: row.slug,
-    kind: row.kind,
-    path: row.slug === HOME_PAGE_SLUG ? "/" : `/${row.slug}`,
-    document: row.document as PageDocument,
-    publishedAt: (times.get(row.id) ?? row.updatedAt).toISOString(),
-  }));
+/**
+ * Published pages with their live documents, ordered by slug. Includes `noindex` pages; callers filter. Rows are read
+ * in keyset-paginated batches and the last-published time comes from a correlated subquery, so no statement binds an
+ * id list (D1 allows at most 100 bound parameters) however many pages are published.
+ */
+export async function listPublishedPages(
+  deps: MarketplaceDeps,
+  options: ListPublishedPagesOptions = {},
+): Promise<PublishedPageEntry[]> {
+  const limit = Math.max(0, Math.min(options.limit ?? MAX_PUBLISHED_PAGES_LISTED, MAX_PUBLISHED_PAGES_LISTED));
+  const lastPublishedAt = sql<number | null>`(select max(${pagePublications.publishedAt}) from ${pagePublications} where ${pagePublications.pageId} = ${pages.id})`;
+  const entries: PublishedPageEntry[] = [];
+  let after = options.afterSlug;
+  while (entries.length < limit) {
+    const rows = await deps.db
+      .select({
+        slug: pages.slug,
+        kind: pages.kind,
+        updatedAt: pages.updatedAt,
+        document: pageRevisions.document,
+        lastPublishedAt,
+      })
+      .from(pages)
+      .innerJoin(pageRevisions, eq(pageRevisions.id, pages.publishedRevisionId))
+      .where(and(isNotNull(pages.publishedRevisionId), after === undefined ? undefined : gt(pages.slug, after)))
+      .orderBy(asc(pages.slug))
+      .limit(Math.min(PUBLISHED_PAGES_BATCH, limit - entries.length));
+    for (const row of rows) {
+      entries.push({
+        slug: row.slug,
+        kind: row.kind,
+        path: row.slug === HOME_PAGE_SLUG ? "/" : `/${row.slug}`,
+        document: row.document as PageDocument,
+        // The subquery yields the raw integer timestamp; fall back to the page's own update time.
+        publishedAt: (row.lastPublishedAt === null ? row.updatedAt : new Date(Number(row.lastPublishedAt))).toISOString(),
+      });
+    }
+    const last = rows.at(-1);
+    if (!last || rows.length < PUBLISHED_PAGES_BATCH) break;
+    after = last.slug;
+  }
+  return entries;
 }
 
 /** Publicly visible packages that have at least one indexed version (the ones with a detail page worth indexing). */
@@ -88,6 +120,7 @@ export async function listPublishedCollectionIndex(deps: MarketplaceDeps): Promi
     .select({ slug: collections.slug, title: collections.title, description: collections.description, updatedAt: collections.updatedAt })
     .from(collections)
     .where(eq(collections.published, true))
-    .orderBy(asc(collections.position), asc(collections.title));
+    .orderBy(asc(collections.position), asc(collections.title))
+    .limit(MAX_PUBLISHED_PAGES_LISTED);
   return rows.map((row) => ({ ...row, updatedAt: row.updatedAt.toISOString() }));
 }

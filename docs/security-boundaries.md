@@ -23,7 +23,9 @@ the package page. Keep all three in step.
 | Verified publisher | Proved control of a web domain with a DNS TXT record | Anything about code quality |
 | npm provenance | Recorded when the registry reports it (attestation and signature key ids) | Verified by the marketplace. **Provenance is recorded, not verified.** |
 
-Curation changes go through the API or MCP with the `packages:curate` scope (admins hold every scope) and are audited; there is no curation admin UI yet.
+Curation status changes (list, hide, reject, feature) go through the REST API with the `packages:curate` scope
+(admins hold every scope) and are audited; MCP can only feature or unfeature (`feature_package`) and manage
+collections. There is no curation admin UI yet.
 
 ## Content that comes from outside
 
@@ -44,8 +46,24 @@ Curation changes go through the API or MCP with the `packages:curate` scope (adm
   email (`packages/auth/src/admin-allowlist.ts`). Without the verification rule anyone could register an
   allowlisted address first. See [operations](operations.md#admin-bootstrap) for bootstrapping.
 - API tokens are 256-bit random values stored only as SHA-256 hashes (`packages/marketplace/src/accounts/api-tokens.ts`).
+  Creating or revoking one needs a signed-in session, never a token (`packages/api/src/routes/me.ts`): a `cmk_` or
+  OAuth token cannot turn itself into a credential that outlives its own grant. A retried create with the same
+  `Idempotency-Key` answers `409` naming the token instead of storing or repeating its plaintext.
+- OAuth clients register themselves without an account, so they are never offered `admin` or `account:write`
+  (`OAUTH_API_SCOPES` in `packages/auth/src/create-auth.ts`); account changes stay with sessions. The consent
+  screen marks every client as unverified and shows its client id and the host the answer is sent to, because a
+  client chooses its own display name and nothing checks it.
+- Clients that link a ClarkCant install (e.g. ClarkCant desktop) request `devices:link` instead. It allows only
+  linking, listing and unlinking the caller's own device links (`packages/marketplace/src/accounts/device-links.ts`);
+  it cannot mint or revoke tokens, revoke grants, read or change the profile, or manage publishers. Sessions and
+  `cmk_` tokens holding `account:write` (or `account:read` for listing) keep working for the same routes.
+- Publisher invitations can only be accepted by an account whose email is verified. No email is sent, so an
+  unverified address proves nothing about the mailbox.
+- After sign-in, `?next=` is followed only when it resolves to a path on the site itself
+  (`safeNextPath` in `apps/web/src/components/auth/request.ts`); control characters and backslashes are refused.
 - Draft previews (`/preview/<token>`) use an HMAC token over page, revision and expiry keyed by
-  `BETTER_AUTH_SECRET`; they are `noindex`, `no-store` and `Referrer-Policy: no-referrer`.
+  `BETTER_AUTH_SECRET`; they are `noindex`, `no-store` and `Referrer-Policy: no-referrer`. The token is a bearer
+  credential, so request and rate-limit logs record the path as `/preview/:token`.
 
 ## Response headers
 
@@ -62,7 +80,7 @@ Set on every response by `apps/web/src/middleware/security-headers.ts`:
 | `Cross-Origin-Opener-Policy` | `same-origin` |
 
 **CSP.** Pages use Astro's hashed policy (`security.csp` in `apps/web/astro.config.ts`), which Astro sends as a
-header on this adapter: scripts only from `'self'` plus hashes of inline scripts, styles from `'self'`, Google Fonts
+`Content-Security-Policy` response header on this adapter (checked on staging), not a `<meta>` tag: scripts only from `'self'` plus hashes of inline scripts, styles from `'self'`, Google Fonts
 and hashes of inline `<style>` elements; `object-src 'none'`, `base-uri 'self'`, `form-action 'self'`. The
 middleware adds the header-only directives (`frame-ancestors`, `upgrade-insecure-requests`) without overriding what
 Astro set (`mergeCsp`). Non-HTML responses get `default-src 'none'`. Inline content Astro does not hash itself:
@@ -87,7 +105,9 @@ active under `astro dev`; `E2E_BUILT=1` Playwright runs check a production build
 | search | `/api/v1/search`, `?q=` on `/api/v1/packages` and `/packages` | 60 |
 | api | other `/api/v1/*`, `/openapi.json`, `/mcp` | 300 |
 
-Callers are keyed by a hash of their bearer token, else their session cookie, else their IP. A limited request gets
+Callers are keyed by client IP (`CF-Connecting-IP`), whether or not they send a credential. The limiter runs before
+authentication, so a credential it could see is unverified; keying on it would let a client rotate random tokens or
+cookies to get a fresh budget per request. Callers behind one IP (NAT, CI egress) share a budget. A limited request gets
 `429` with `Retry-After: 60` and the standard error body (`code: "rate_limited"`). A missing or failing binding fails
 open and logs `rate_limit_binding_missing` or `rate_limit_check_failed` at error level; each rejection logs
 `rate_limited`. Cloudflare's limiter is itself approximate and per location, so treat these as abuse
@@ -104,7 +124,11 @@ category first.
 ## Legal pages
 
 `Create default pages` in the admin (or `ensureDefaultPages`) creates and publishes Terms, Privacy, Cookies,
-Refunds, GDPR, Security and Subprocessors when they do not exist yet, never overwriting an existing page. Their text
+Refunds, GDPR, Security and Subprocessors when they do not exist yet, never overwriting an existing page. The jobs
+Worker's scheduled handler also runs the same step on every cron tick (`ensureDefaultPagesAsSystem`), so a fresh
+environment gets these pages without a manual step. It acts as the system actor `DEFAULT_PAGES_ACTOR` (recorded in
+the audit log), is idempotent (one query when every page exists) and never touches an existing page, edited,
+unpublished or not. Their text
 is marked as a draft and carries `[TO BE CONFIRMED]` placeholders (`packages/marketplace/src/pages/legal-pages.ts`);
 replace them after legal review. The subprocessor list
 names only services in use: Cloudflare, GitHub (only when GitHub sign-in is configured), and the npm registry as a

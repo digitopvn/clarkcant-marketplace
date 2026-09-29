@@ -5,6 +5,7 @@ import { resetDatabase, seedPackage, testDeps } from "../../marketplace/test/sup
 import { createInProcessSite } from "../../sdk/test/support/in-process-site";
 import {
   ADMIN_TOOLS,
+  MAX_MCP_BODY_BYTES,
   MCP_PROTECTED_RESOURCE_METADATA_PATH,
   USER_TOOLS,
   handleMcpRequest,
@@ -186,6 +187,35 @@ describe("authorization", () => {
     expect(invalid.headers.get("www-authenticate")).toContain('error="invalid_token"');
   });
 
+  it("rejects bodies over the cap with 413, declared or streamed, before any authentication", async () => {
+    const oversized = new Uint8Array(MAX_MCP_BODY_BYTES + 1).fill(0x20);
+    const declared = await serveMcp(
+      new Request(MCP_URL, { method: "POST", headers: { "content-type": "application/json", authorization: "Bearer cmk_not_a_token" }, body: oversized }),
+    );
+    expect(declared.status).toBe(413);
+    expect(await declared.json()).toMatchObject({ error: "payload_too_large" });
+
+    // A chunked body without Content-Length is counted while it is read.
+    const chunk = new Uint8Array(1024 * 1024).fill(0x20);
+    let sent = 0;
+    const stream = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        if (sent > MAX_MCP_BODY_BYTES) controller.close();
+        else {
+          sent += chunk.byteLength;
+          controller.enqueue(chunk);
+        }
+      },
+    });
+    const streamed = await serveMcp(
+      new Request(MCP_URL, { method: "POST", headers: { "content-type": "application/json" }, body: stream, duplex: "half" } as RequestInit),
+    );
+    expect(streamed.status).toBe(413);
+
+    // A body under the cap still reaches the protocol handler.
+    expect((await serveMcp(rpc("tools/list", {}))).status).toBe(200);
+  });
+
   it("ignores browser session cookies, so a cross-site page cannot act as the visitor", async () => {
     const adminCookie = await site.signUp(`mcp-cookie-${suffix}@example.test`);
     const response = await serveMcp(rpc("tools/call", { name: "list_my_packages", arguments: {} }, { cookie: adminCookie }));
@@ -255,6 +285,8 @@ describe("account and admin tools", () => {
     expect(structured<{ contentType: string; url: string }>(uploaded)).toMatchObject({ contentType: "image/png" });
     await expectToolFailure(client, "upload_media", { base64: btoa("<svg onload=alert(1)>") }, "validation_failed");
     await expectToolFailure(client, "upload_media", { base64: "not base64 !!" }, "validation_failed");
+    // Over 5 MiB once decoded: refused by the tool's input schema before any decoding.
+    await expectToolFailure(client, "upload_media", { base64: "A".repeat(Math.ceil((5 * 1024 * 1024) / 3) * 4 + 4) }, "validation_failed");
 
     const featured = await client.callTool({ name: "feature_package", arguments: { name: "@tempo/timer-widget", featured: true } });
     expect(structured<{ curationStatus: string }>(featured).curationStatus).toBe("featured");

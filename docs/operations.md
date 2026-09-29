@@ -10,17 +10,49 @@ Admin rights come from the `ADMIN_EMAILS` secret, and outside development only f
 one of two ways:
 
 1. **GitHub sign-in** (when `GITHUB_CLIENT_ID`/`GITHUB_CLIENT_SECRET` are set): sign in with a GitHub account whose
-   verified primary email is on the allowlist.
-2. **Operator marks it verified** after the person signed up with email and password:
+   verified primary email is on the allowlist. If this fails with `account_not_linked`, an email/password account
+   already exists for that address. It may not be the admin's: see the warning below before doing anything else.
+2. **Operator verifies one specific account, by user id**, after the person signed up with email and password.
+
+> **Pre-registration squatting.** Sign-up is open and no email is sent, so anyone can register the admin address
+> before the admin does, with their own password. Verifying "the row with this email" would hand that stranger
+> every admin scope. Never verify by email alone; identify the account by its id and confirm the admin created it.
+
+Procedure for step 2:
+
+1. The person signs up, then opens `/api/v1/me` while signed in and sends you its `id`, together with roughly when
+   they signed up, over a channel you already trust (not an email to the address being verified).
+2. Look up every account for the address, how it signs in and where its sessions come from:
 
    ```sh
-   pnpm --filter @marketplace/web exec wrangler d1 execute DB --remote --env <env> \
-     --command "UPDATE user SET email_verified = 1 WHERE email = lower('admin@example.com')"
+   pnpm --filter @marketplace/web exec wrangler d1 execute DB --remote --env <env> --command \
+     "SELECT id, email_verified, datetime(created_at / 1000, 'unixepoch') AS created FROM user WHERE email = lower('admin@example.com')"
+   pnpm --filter @marketplace/web exec wrangler d1 execute DB --remote --env <env> --command \
+     "SELECT provider_id, datetime(created_at / 1000, 'unixepoch') AS created FROM account WHERE user_id = '<user id>'"
+   pnpm --filter @marketplace/web exec wrangler d1 execute DB --remote --env <env> --command \
+     "SELECT datetime(created_at / 1000, 'unixepoch') AS created, ip_address, user_agent FROM session WHERE user_id = '<user id>'"
    ```
 
-The person then signs out and in again so the new session carries the verified address; the stored `role` column mirrors the allowlist at each new session. To revoke, remove
-the address from `ADMIN_EMAILS` (`wrangler secret put ADMIN_EMAILS --env <env>`); admin checks read the allowlist on
-every request.
+3. Continue only if there is exactly one row, its `id` is the one the person sent, `created` matches when they
+   signed up, and its sign-in methods and sessions are all theirs. If the row predates their sign-up or they do not
+   recognise it, it is squatted: do not verify it. Free the address and end its sessions, keeping the row for the
+   audit trail, then have the person sign up again and start over:
+
+   ```sh
+   pnpm --filter @marketplace/web exec wrangler d1 execute DB --remote --env <env> --command \
+     "UPDATE user SET email = 'squatted-' || id || '@invalid' WHERE id = '<squatter id>'; DELETE FROM session WHERE user_id = '<squatter id>'"
+   ```
+
+4. Verify by id, with the address as a second guard (the command changes nothing if either does not match):
+
+   ```sh
+   pnpm --filter @marketplace/web exec wrangler d1 execute DB --remote --env <env> --command \
+     "UPDATE user SET email_verified = 1 WHERE id = '<user id>' AND email = lower('admin@example.com')"
+   ```
+
+The person then signs out and in again so the new session carries the verified address; the stored `role` column
+mirrors the allowlist at each new session. To revoke, remove the address from `ADMIN_EMAILS`
+(`wrangler secret put ADMIN_EMAILS --env <env>`); admin checks read the allowlist on every request.
 
 ## Secrets
 
@@ -44,7 +76,8 @@ both or neither). How to set them and what rotating `BETTER_AUTH_SECRET` does: [
 | `hidden` | Removed from public surfaces, for example pending a question to the publisher. |
 | `rejected` | Removed from public surfaces permanently. |
 
-Change status through the API (`POST /api/v1/curation/packages/{name}/status`, scope `packages:curate`, which admins hold) or MCP; every change is audited. npm provenance
+Change status through the REST API (`POST /api/v1/curation/packages/{name}/status`, scope `packages:curate`, which
+admins hold); MCP can only feature or unfeature (`feature_package`). Every change is audited. npm provenance
 is recorded when present, **not verified**. Say so whenever you describe a package publicly.
 
 ## Migrations discipline
@@ -102,6 +135,15 @@ refers to it), and search is consistent because the FTS table lives in D1.
   (Workers > Workflows).
 - **Alerts worth setting**: health not 200, a rise in `request_failed` or 5xx, any `rate_limit_binding_missing`,
   and a non-empty dead-letter queue.
+- **Jobs CPU budget**: `apps/jobs/wrangler.jsonc` pins `limits.cpu_ms` to 30000 in every environment (Workers Paid
+  allows up to 300000), because README rendering and tarball parsing run in that Worker. If indexing logs show
+  `exceededCpu`, raise it there rather than shrinking the README size limits.
+
+## Known limitations
+
+- Search sync (`packages/marketplace/src/search/search-index.ts`) deletes a package's old `packages_fts` row by its
+  unindexed `package_id` column, which scans the whole FTS table on every sync. It is cheap at the current catalogue
+  size; fixing it needs a package-to-FTS rowid mapping table and a migration (`packages.rowid` can change on VACUUM).
 
 ## Local development
 

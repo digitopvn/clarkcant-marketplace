@@ -172,7 +172,13 @@ export function createNpmRegistry(options: NpmRegistryOptions = {}): NpmRegistry
     },
 
     async fetchTarball(url) {
-      const target = new URL(url);
+      let target: URL;
+      try {
+        target = new URL(url);
+      } catch {
+        // A malformed dist.tarball is a fact about this immutable version; retrying cannot fix it.
+        throw new IndexingRejectedError("invalid_packument", "the packument lists a malformed tarball URL", { url });
+      }
       // Tarballs are only ever fetched from the registry that described them; a packument cannot point us elsewhere.
       if (target.origin !== baseUrl.origin) {
         throw new IndexingRejectedError("untrusted_tarball_url", `tarball URL is not on ${baseUrl.origin}`, { url });

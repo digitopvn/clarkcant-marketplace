@@ -96,6 +96,30 @@ function parseLimit(value: string): number {
   return limit;
 }
 
+function isLoopbackHost(hostname: string): boolean {
+  const host = hostname.toLowerCase();
+  return host === "localhost" || host.endsWith(".localhost") || host === "127.0.0.1" || host === "[::1]";
+}
+
+/**
+ * The origin every request (and so every bearer token) goes to. Only https is accepted, except plain http on a
+ * loopback host for local development, so a mistyped or hostile `--api-url` never carries a token in clear text.
+ */
+function checkedOrigin(apiUrl: string): string {
+  let url: URL;
+  try {
+    url = new URL(apiUrl);
+  } catch {
+    throw new CliError("validation_failed", `invalid --api-url: ${apiUrl}`, EXIT.usage);
+  }
+  if (url.protocol === "https:" || (url.protocol === "http:" && isLoopbackHost(url.hostname))) return url.origin;
+  throw new CliError(
+    "validation_failed",
+    `refusing --api-url ${url.protocol}//${url.host}: use https (plain http is allowed only for localhost, *.localhost, 127.0.0.1 and [::1])`,
+    EXIT.usage,
+  );
+}
+
 /**
  * Runs one CLI invocation and resolves with its exit code. Never calls `process.exit`, so tests (and embedders)
  * drive it in-process. Every command talks to the marketplace only through `@marketplace/sdk`.
@@ -117,12 +141,7 @@ export async function runCli(argv: readonly string[], io: CliIo): Promise<number
     const options = program.opts<GlobalOptions>();
     jsonMode = Boolean(options.json);
     const apiUrl = options.apiUrl ?? io.env.CLARK_MARKET_API_URL ?? DEFAULT_API_URL;
-    let origin: string;
-    try {
-      origin = new URL(apiUrl).origin;
-    } catch {
-      throw new CliError("validation_failed", `invalid --api-url: ${apiUrl}`, EXIT.usage);
-    }
+    const origin = checkedOrigin(apiUrl);
     const token = async () => io.env.CLARK_MARKET_TOKEN || (await io.tokenStore.get(origin))?.token;
     const client: MarketplaceClient = createMarketplaceClient({
       baseUrl: origin,

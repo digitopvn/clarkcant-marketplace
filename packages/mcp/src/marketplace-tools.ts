@@ -63,6 +63,9 @@ function tool<Input extends z.ZodObject>(definition: MarketplaceTool<Input>): Ma
 }
 
 const packageName = z.string().min(1).max(214).describe("npm package name, e.g. `@acme/clock-widget`");
+/** Base64 length of the largest accepted image (5 MiB decoded, the media service's own limit). */
+const MAX_UPLOAD_BASE64_LENGTH = Math.ceil((5 * 1024 * 1024) / 3) * 4;
+
 const idempotencyKey = z
   .string()
   .min(1)
@@ -279,11 +282,15 @@ export const ADMIN_TOOLS: readonly MarketplaceTool[] = [
     name: "upload_media",
     title: "Upload an image",
     description:
-      "Stores an image (PNG, JPEG, WebP, GIF or AVIF, at most 5 MiB decoded) for use in pages. Returns its " +
+      "Stores an image (PNG, JPEG, WebP or GIF, at most 5 MiB decoded) for use in pages. Returns its " +
       "content-addressed URL. The bytes are sniffed; anything that is not an image is rejected.",
     scope: "media:write",
     inputSchema: z.object({
-      base64: z.string().min(1).describe("The file's bytes, base64-encoded (no data: prefix)"),
+      base64: z
+        .string()
+        .min(1)
+        .max(MAX_UPLOAD_BASE64_LENGTH)
+        .describe("The file's bytes, base64-encoded (no data: prefix), at most 5 MiB decoded"),
       alt: z.string().max(300).optional(),
     }),
     readOnly: false,

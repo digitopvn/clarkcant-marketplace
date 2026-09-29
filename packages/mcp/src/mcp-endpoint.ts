@@ -9,7 +9,10 @@ import { findMarketplaceTool } from "./marketplace-tools";
 export const MCP_PATH = "/mcp";
 /** RFC 9728 metadata for the `/mcp` resource: `/.well-known/oauth-protected-resource` + the resource path. */
 export const MCP_PROTECTED_RESOURCE_METADATA_PATH = `/.well-known/oauth-protected-resource${MCP_PATH}`;
-/** Upper bound on a JSON-RPC request body; tool inputs (base64 media included) fit well below it. */
+/**
+ * Upper bound on a JSON-RPC request body; tool inputs (base64 media included) fit below it. Larger bodies are
+ * answered 413 without being buffered, whether or not they declare a `Content-Length`.
+ */
 export const MAX_MCP_BODY_BYTES = 8 * 1024 * 1024;
 
 export interface McpEndpointOptions {
@@ -48,14 +51,49 @@ interface JsonRpcMessage {
   params?: { name?: unknown } | null;
 }
 
+/**
+ * Reads a request body into memory, stopping as soon as it exceeds `limit`. Returns `null` for an oversized body,
+ * checking a declared `Content-Length` first so an honest client is refused before anything is read.
+ */
+async function readBoundedBody(request: Request, limit = MAX_MCP_BODY_BYTES): Promise<Uint8Array | null> {
+  const declared = request.headers.get("content-length");
+  if (declared !== null && !(Number(declared) <= limit)) return null;
+  if (!request.body) return new Uint8Array(0);
+  const reader = request.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.byteLength;
+    if (total > limit) {
+      await reader.cancel().catch(() => undefined);
+      return null;
+    }
+    chunks.push(value);
+  }
+  const body = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    body.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return body;
+}
+
+function payloadTooLarge(): Response {
+  return Response.json(
+    { error: "payload_too_large", error_description: `MCP request bodies are limited to ${MAX_MCP_BODY_BYTES} bytes` },
+    { status: 413, headers: { "Cache-Control": "no-store" } },
+  );
+}
+
 /** Names of the tools a POSTed JSON-RPC payload (a message or a 2025-era batch) calls. */
-async function calledTools(request: Request): Promise<string[]> {
-  if (request.method !== "POST") return [];
-  const length = Number(request.headers.get("content-length") ?? "0");
-  if (length > MAX_MCP_BODY_BYTES) return [];
+function calledTools(body: Uint8Array | null): string[] {
+  if (body === null) return [];
   let payload: unknown;
   try {
-    payload = await request.clone().json();
+    payload = JSON.parse(new TextDecoder().decode(body));
   } catch {
     // Malformed JSON is the protocol handler's to reject with a JSON-RPC parse error.
     return [];
@@ -91,12 +129,21 @@ async function resolveActor(request: Request, options: McpEndpointOptions, origi
  * `WWW-Authenticate` challenge (no credential or an invalid one) or 403 `insufficient_scope`, so MCP clients can
  * start or step up OAuth.
  */
-export async function handleMcpRequest(request: Request, options: McpEndpointOptions): Promise<Response> {
+export async function handleMcpRequest(incoming: Request, options: McpEndpointOptions): Promise<Response> {
+  // The body is read once, bounded, before any authentication work; the protocol handler gets the buffered copy.
+  let body: Uint8Array | null = null;
+  let request = incoming;
+  if (incoming.method === "POST") {
+    body = await readBoundedBody(incoming);
+    if (body === null) return payloadTooLarge();
+    request = new Request(incoming.url, { method: incoming.method, headers: incoming.headers, body });
+  }
+
   const origin = resolveAuthOrigin(options.vars, request);
   const actor = await resolveActor(request, options, origin);
   if (actor instanceof Response) return actor;
 
-  for (const name of await calledTools(request)) {
+  for (const name of calledTools(body)) {
     const scope = findMarketplaceTool(name)?.scope;
     if (!scope || actorHasScope(actor, scope)) continue;
     if (actor.type === "anonymous") {

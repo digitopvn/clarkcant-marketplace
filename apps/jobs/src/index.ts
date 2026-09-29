@@ -4,6 +4,7 @@ import {
   IndexingRejectedError,
   createMarketplaceDeps,
   discoverNpmPackages,
+  ensureDefaultPagesAsSystem,
   handleIngestMessage,
   indexPackage,
   isIndexingRejection,
@@ -24,6 +25,12 @@ const indexPackageParamsSchema = z.object({
   submissionId: z.string().regex(/^sub_[0-9a-z]{26}$/),
   packageName: packageNameSchema,
 });
+
+/**
+ * Cron expressions from `wrangler.jsonc` (identical in every environment). Discovery runs on its own tick; every tick,
+ * including the frequent one, makes sure the default pages exist.
+ */
+const DISCOVERY_CRON = "17 */6 * * *";
 
 /** Per-stage retry policy: npm and R2 hiccups are retried; a rejection (bad artifact) never is. */
 const STEP_CONFIG = {
@@ -100,9 +107,24 @@ export default {
   },
 
   async scheduled(controller, env, ctx) {
+    const deps = depsFor(env);
+    // Every tick: a freshly deployed environment gets its landing, about and policy pages without a manual step.
+    // One query when they all exist; existing pages are never touched.
     ctx.waitUntil(
-      discoverNpmPackages(depsFor(env)).then(
-        (result) => console.info(`discovery (${controller.cron}): saw ${result.seen}, queued ${result.queued}`),
+      ensureDefaultPagesAsSystem(deps).then(
+        (result) => {
+          if (result.created.length > 0) console.info(`default pages (${controller.cron}): published ${result.created.join(", ")}`);
+        },
+        (error: unknown) => console.error(`default pages (${controller.cron}) failed`, error),
+      ),
+    );
+    if (controller.cron !== DISCOVERY_CRON) return;
+    ctx.waitUntil(
+      discoverNpmPackages(deps).then(
+        (result) =>
+          console.info(
+            `discovery (${controller.cron}): saw ${result.seen}, queued ${result.queued}, left ${result.pending} for the next run`,
+          ),
         (error: unknown) => console.error(`discovery (${controller.cron}) failed`, error),
       ),
     );

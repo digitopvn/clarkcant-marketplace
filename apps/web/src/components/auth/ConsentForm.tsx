@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
-import { describeError, requestJson } from "./request";
+import { describeError, describeRedirectTarget, requestJson } from "./request";
 import { Button, Notice } from "./ui";
 
 interface ConsentResponse {
@@ -15,6 +15,10 @@ interface ConsentResponse {
 export default function ConsentForm() {
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
+  const [target, setTarget] = useState<string | null>(null);
+
+  // Read after hydration: the island is also rendered on the server, where there is no `window`.
+  useEffect(() => setTarget(describeRedirectTarget(window.location.search)), []);
 
   async function decide(accept: boolean) {
     setPending(true);
@@ -24,9 +28,9 @@ export default function ConsentForm() {
         method: "POST",
         body: { accept, oauth_query: window.location.search.replace(/^\?/, "") },
       });
-      const target = response.redirect_uri ?? response.url;
-      if (!target) throw new Error("The authorization server did not return a redirect.");
-      window.location.assign(target);
+      const redirect = response.redirect_uri ?? response.url;
+      if (!redirect) throw new Error("The authorization server did not return a redirect.");
+      window.location.assign(redirect);
     } catch (caught) {
       setError(describeError(caught));
       setPending(false);
@@ -35,6 +39,12 @@ export default function ConsentForm() {
 
   return (
     <div>
+      {target && (
+        <p className="mb-4 text-sm">
+          Your answer is sent to <strong className="font-mono">{target}</strong>. Application names are chosen by the
+          application itself; only allow access if you started this from an app you trust.
+        </p>
+      )}
       <div className="flex gap-2">
         <Button disabled={pending} onClick={() => void decide(true)}>
           Allow

@@ -24,7 +24,13 @@ export {
   type RenderSettings,
   type ResolvedPreview,
 } from "./page-service";
-export { DEFAULT_PAGES, ensureDefaultPages, type DefaultPagesResult } from "./default-pages";
+export {
+  DEFAULT_PAGES,
+  DEFAULT_PAGES_ACTOR,
+  ensureDefaultPages,
+  ensureDefaultPagesAsSystem,
+  type DefaultPagesResult,
+} from "./default-pages";
 export { LEGAL_DRAFT_NOTICE, LEGAL_PAGES, type LegalPage } from "./legal-pages";
 export { createPageDataPort } from "./page-data-port";
 export { assertPreviewSecret } from "./preview-token";

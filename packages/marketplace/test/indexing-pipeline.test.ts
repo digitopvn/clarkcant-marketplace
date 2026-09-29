@@ -265,15 +265,15 @@ describe("discovery and the ingest queue", () => {
     const { queue, sent } = recordingQueue();
     const queued = { ...deps, queue };
 
-    expect(await discoverNpmPackages(queued, { registry })).toEqual({ seen: 1, queued: 1 });
-    expect(await discoverNpmPackages(queued, { registry })).toEqual({ seen: 1, queued: 0 });
+    expect(await discoverNpmPackages(queued, { registry })).toEqual({ seen: 1, queued: 1, pending: 0 });
+    expect(await discoverNpmPackages(queued, { registry })).toEqual({ seen: 1, queued: 0, pending: 0 });
     expect(sent).toEqual([{ type: "index-package", submissionId: expect.stringMatching(/^sub_/), packageName: FIXTURE_NAME }]);
 
     const [message] = sent;
     if (!message) throw new Error("expected a queued message");
     await handleIngestMessage(queued, message, { registry });
     expect((await getPackage(deps, FIXTURE_NAME)).latestVersion).toBe("1.0.0");
-    expect(await discoverNpmPackages(queued, { registry })).toEqual({ seen: 1, queued: 0 });
+    expect(await discoverNpmPackages(queued, { registry })).toEqual({ seen: 1, queued: 0, pending: 0 });
     expect(await auditActions()).toEqual(["package.discovered", "package.indexed"]);
   });
 

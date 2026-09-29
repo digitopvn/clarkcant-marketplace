@@ -93,6 +93,37 @@ describe("public commands", () => {
     expect((await run("--help")).code).toBe(EXIT.ok);
   });
 
+  it("refuses to send a token to a plain-http origin other than loopback", async () => {
+    const requested: string[] = [];
+    const attempt = async (apiUrl: string) => {
+      let stdout = "";
+      let stderr = "";
+      const code = await runCli(["--api-url", apiUrl, "whoami", "--json"], {
+        stdout: (text) => void (stdout += text),
+        stderr: (text) => void (stderr += text),
+        env: { CLARK_MARKET_TOKEN: "cmk_secret" },
+        tokenStore: new MemoryTokenStore(),
+        fetch: (request) => {
+          requested.push(request.url);
+          return Promise.reject(new TypeError("offline"));
+        },
+      });
+      return { code, stdout, stderr };
+    };
+
+    for (const refused of ["http://mk.example", "http://10.0.0.5:8787", "ftp://mk.example"]) {
+      const result = await attempt(refused);
+      expect(result.code).toBe(EXIT.usage);
+      expect(JSON.parse(result.stdout)).toMatchObject({ error: { code: "validation_failed", message: expect.stringContaining("use https") } });
+    }
+    expect(requested).toEqual([]);
+
+    for (const allowed of ["https://mk.example", "http://localhost:8787", "http://127.0.0.1:8787", "http://[::1]:8787", "http://app.localhost"]) {
+      expect((await attempt(allowed)).code).toBe(EXIT.network);
+    }
+    expect(requested.map((url) => new URL(url).host)).toEqual(["mk.example", "localhost:8787", "127.0.0.1:8787", "[::1]:8787", "app.localhost"]);
+  });
+
   it("parses scoped package references", () => {
     expect(parsePackageRef("@acme/clock-widget")).toEqual({ name: "@acme/clock-widget" });
     expect(parsePackageRef("@acme/clock-widget@1.2.0")).toEqual({ name: "@acme/clock-widget", version: "1.2.0" });

@@ -1,11 +1,18 @@
-import { MarketplaceError, requireScope, type Actor, type PageDocumentInput, type PageKind } from "@marketplace/contracts";
-import { pages } from "@marketplace/db";
-import { inArray } from "drizzle-orm";
+import {
+  MarketplaceError,
+  requireScope,
+  type Actor,
+  type AuditActor,
+  type PageDocumentInput,
+  type PageKind,
+} from "@marketplace/contracts";
+import { pageRevisions, pages } from "@marketplace/db";
+import { eq, inArray } from "drizzle-orm";
 
 import type { MarketplaceDeps } from "../deps";
 import { LEGAL_PAGES } from "./legal-pages";
-import { HOME_PAGE_SLUG } from "./page-schemas";
-import { createPage, publishPage } from "./page-service";
+import { HOME_PAGE_SLUG, type CreatePageInput, type PageState, type PublishPageInput } from "./page-schemas";
+import { createPage, createPageAsSystem, publishPage, publishPageAsSystem } from "./page-service";
 
 /*
  * The pages a fresh marketplace starts with. They are ordinary block documents created and published through the
@@ -141,7 +148,7 @@ export const DEFAULT_PAGES: readonly DefaultPage[] = [
 ];
 
 export interface DefaultPagesResult {
-  /** Slugs created and published by this call. */
+  /** Slugs published by this call: newly created, or a system-seeded page an interrupted earlier run left unpublished. */
   created: string[];
   /** Slugs that already existed and were left untouched. */
   existing: string[];
@@ -153,28 +160,87 @@ export interface DefaultPagesResult {
  */
 export async function ensureDefaultPages(deps: MarketplaceDeps, actor: Actor): Promise<DefaultPagesResult> {
   requireScope(actor, "pages:publish");
+  return createMissingDefaultPages(deps, {
+    create: (input) => createPage(deps, actor, input),
+    publish: (input) => publishPage(deps, actor, input),
+  });
+}
+
+/** The audit identity of the jobs Worker when it seeds default pages. */
+export const DEFAULT_PAGES_ACTOR: AuditActor = { type: "system", id: "jobs.default-pages" };
+
+/**
+ * {@link ensureDefaultPages} run by the system, with no account: the jobs Worker calls it on a schedule so a freshly
+ * deployed environment gets its landing, about and policy pages without a manual step. It is a single cheap query
+ * when every page exists, and like the admin command it never touches a page that exists (edited, unpublished or
+ * not). Every page it creates and publishes is recorded in the audit log as {@link DEFAULT_PAGES_ACTOR}.
+ */
+export function ensureDefaultPagesAsSystem(deps: MarketplaceDeps): Promise<DefaultPagesResult> {
+  return createMissingDefaultPages(deps, {
+    create: (input) => createPageAsSystem(deps, DEFAULT_PAGES_ACTOR, input),
+    publish: (input) => publishPageAsSystem(deps, DEFAULT_PAGES_ACTOR, input),
+  });
+}
+
+interface PageWriters {
+  create(input: CreatePageInput): Promise<PageState>;
+  publish(input: PublishPageInput): Promise<PageState>;
+}
+
+const isConflict = (error: unknown) => error instanceof MarketplaceError && error.code === "conflict";
+
+async function createMissingDefaultPages(deps: MarketplaceDeps, writers: PageWriters): Promise<DefaultPagesResult> {
   const slugs = DEFAULT_PAGES.map((page) => page.slug);
-  const present = new Set(
-    (await deps.db.select({ slug: pages.slug }).from(pages).where(inArray(pages.slug, slugs))).map((row) => row.slug),
-  );
+  const rows = await deps.db
+    .select({
+      slug: pages.slug,
+      id: pages.id,
+      draftId: pages.currentDraftRevisionId,
+      publishedId: pages.publishedRevisionId,
+      draftNumber: pageRevisions.number,
+      draftAuthor: pageRevisions.authorId,
+    })
+    .from(pages)
+    .leftJoin(pageRevisions, eq(pageRevisions.id, pages.currentDraftRevisionId))
+    .where(inArray(pages.slug, slugs));
+  const present = new Map(rows.map((row) => [row.slug, row]));
   const result: DefaultPagesResult = { created: [], existing: [] };
   for (const page of DEFAULT_PAGES) {
-    if (present.has(page.slug)) {
-      result.existing.push(page.slug);
-      continue;
+    const existing = present.get(page.slug);
+    let target: { pageId: string; revisionId: string };
+    if (existing) {
+      // A system-seeded page whose publish step never ran (an interrupted earlier run): still revision 1, never
+      // edited by anyone and never published, so finishing it cannot overwrite anything. Every other page is left alone.
+      const unfinished =
+        existing.publishedId === null && existing.draftId !== null && existing.draftNumber === 1 && existing.draftAuthor === null;
+      if (!unfinished || existing.draftId === null) {
+        result.existing.push(page.slug);
+        continue;
+      }
+      target = { pageId: existing.id, revisionId: existing.draftId };
+    } else {
+      try {
+        const state = await writers.create({ slug: page.slug, kind: page.kind, document: page.document });
+        target = { pageId: state.page.id, revisionId: state.draft.revision.id };
+      } catch (error) {
+        // Another request created it in the meantime; that page wins and is left alone.
+        if (isConflict(error)) {
+          result.existing.push(page.slug);
+          continue;
+        }
+        throw error;
+      }
     }
-    let state;
     try {
-      state = await createPage(deps, actor, { slug: page.slug, kind: page.kind, document: page.document });
+      await writers.publish(target);
     } catch (error) {
-      // Another request created it in the meantime; that page wins and is left alone.
-      if (error instanceof MarketplaceError && error.code === "conflict") {
+      // A concurrent run published or edited it first; either way it is no longer ours to publish.
+      if (isConflict(error)) {
         result.existing.push(page.slug);
         continue;
       }
       throw error;
     }
-    await publishPage(deps, actor, { pageId: state.page.id, revisionId: state.draft.revision.id });
     result.created.push(page.slug);
   }
   return result;
