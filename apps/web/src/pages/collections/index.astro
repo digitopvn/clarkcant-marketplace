@@ -3,14 +3,19 @@ import { listCollections } from "@marketplace/marketplace";
 
 import BaseLayout from "../../layouts/BaseLayout.astro";
 import { createRequestContext } from "../../server/request-context";
+import { collectionsIndexSeo } from "../../server/seo";
 
 export const prerender = false;
 
-const { deps } = createRequestContext();
+const { deps, vars } = createRequestContext();
 const collections = await listCollections(deps);
 ---
 
-<BaseLayout title="Collections" description="Curated collections of ClarkCant packages." seo={{ markdown: false }}>
+<BaseLayout
+  title="Collections"
+  description="Curated collections of ClarkCant packages."
+  seo={collectionsIndexSeo(vars.PUBLIC_SITE_URL, collections)}
+>
   <section class="container-page py-10">
     <h1 class="font-display text-4xl sm:text-5xl">Collections</h1>
     <p class="mt-3 max-w-2xl text-lg text-muted">Hand-picked sets of packages, chosen by the marketplace curators.</p>

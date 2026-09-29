@@ -36,10 +36,13 @@ const selects = [
   },
 ] as const;
 const current: Record<string, string | undefined> = { ...values };
+const active = Boolean(
+  values.q || values.category || values.kind || values.isolation || values.platform || values.publisher || values.curation,
+);
 ---
 
-<form action="/packages" method="get" role="search" class="grid gap-3">
-  <div class="flex gap-2">
+<form action="/packages" method="get" role="search" class="grid gap-3" data-package-filters>
+  <div class="flex flex-wrap gap-2">
     <label for="package-search" class="sr-only">Search packages</label>
     <input
       id="package-search"
@@ -48,14 +51,14 @@ const current: Record<string, string | undefined> = { ...values };
       value={values.q}
       maxlength={200}
       placeholder="Search widgets, tools, themes"
-      class="min-w-0 flex-1 rounded-full border border-line bg-card px-4 py-2.5 text-ink placeholder:text-faint focus:border-accent focus:outline-none"
+      class="min-w-[12rem] flex-1 rounded-full border border-line bg-card px-4 py-2.5 text-ink placeholder:text-faint focus:border-accent focus:outline-none"
     />
-    <button type="submit" class="rounded-full bg-accent px-5 py-2.5 text-sm font-medium text-on-accent hover:opacity-90">
+    <button type="submit" class="action-button rounded-full bg-accent px-5 py-2.5 text-sm font-medium text-on-accent hover:opacity-90">
       Search
     </button>
   </div>
-  <fieldset class="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
-    <legend class="sr-only">Filters</legend>
+  <fieldset class="grid min-w-0 grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+    <legend class="sr-only">Filters (applied as soon as you change one)</legend>
     {
       selects.map((select) => (
         <label class="grid gap-1 text-xs text-muted">
@@ -73,4 +76,22 @@ const current: Record<string, string | undefined> = { ...values };
     }
   </fieldset>
   {values.publisher && <input type="hidden" name="publisher" value={values.publisher} />}
+  {
+    active && (
+      <p class="text-sm text-muted">
+        <a href="/packages" class="inline-flex min-h-6 items-center text-accent underline underline-offset-2">
+          Clear filters
+        </a>
+      </p>
+    )
+  }
 </form>
+
+<script>
+  // Progressive enhancement: a changed filter applies immediately. Without JavaScript the Search button submits.
+  for (const form of document.querySelectorAll<HTMLFormElement>("form[data-package-filters]")) {
+    form.addEventListener("change", (event) => {
+      if (event.target instanceof HTMLElement && event.target.tagName === "SELECT") form.requestSubmit();
+    });
+  }
+</script>

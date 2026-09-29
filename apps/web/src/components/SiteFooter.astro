@@ -1,4 +1,6 @@
 ---
+import OrbMark from "./OrbMark.astro";
+
 const year = new Date().getFullYear();
 
 const legal = [
@@ -12,8 +14,10 @@ const legal = [
 ];
 const site = [
   { href: "/about", label: "About" },
+  { href: "/packages", label: "Packages" },
   { href: "/collections", label: "Collections" },
-  { href: "/openapi.json", label: "API" },
+  { href: "/docs/api", label: "API" },
+  { href: "/openapi.json", label: "OpenAPI" },
   { href: "/llms.txt", label: "llms.txt" },
   { href: "/sitemap.xml", label: "Sitemap" },
 ];
@@ -27,17 +31,18 @@ const site = [
     </p>
     <nav aria-label="Footer" class="flex flex-col gap-3 sm:flex-row sm:gap-10">
       <ul class="flex flex-wrap gap-x-4 gap-y-1">
-        {site.map((link) => <li><a class="hover:text-ink" href={link.href}>{link.label}</a></li>)}
+        {site.map((link) => <li><a class="footer-link" href={link.href}>{link.label}</a></li>)}
       </ul>
       <ul class="flex flex-wrap gap-x-4 gap-y-1">
-        {legal.map((link) => <li><a class="hover:text-ink" href={link.href}>{link.label}</a></li>)}
+        {legal.map((link) => <li><a class="footer-link" href={link.href}>{link.label}</a></li>)}
         <li>
-          <button type="button" class="cursor-pointer underline-offset-2 hover:text-ink hover:underline" data-consent-open>
-            Cookie settings
-          </button>
+          <button type="button" class="footer-link" data-consent-open>Cookie settings</button>
         </li>
       </ul>
     </nav>
-    <p>© {year} ClarkCant</p>
+    <p class="flex items-center gap-2">
+      <OrbMark id="orb-footer" class="h-5 w-5" />
+      <span>© {year} ClarkCant</span>
+    </p>
   </div>
 </footer>

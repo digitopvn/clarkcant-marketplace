@@ -47,6 +47,15 @@ Run the narrowest test first (`pnpm exec vitest run --project <name>`), then `pn
   ([deployment](docs/deployment.md)).
 - **No fake data**: seed through the real services (`Create default pages`, `pnpm index:local` with a real tarball).
 
+## UI and discovery surfaces
+
+- Visual, motion and voice rules for public pages are in [DESIGN.md](DESIGN.md); the review checklist (three
+  viewports, 320 px reflow, 24 px targets, keyboard, reduced motion, Markdown twins, JSON-LD) is in
+  [REVIEW.md](REVIEW.md). Attach screenshots at 1440, 768 and 375 px to any PR that changes public UI.
+- Builder-page HTML is rendered inside the engine's `.pe-page` column; do not wrap it in another `container-page`.
+- A new indexable page needs a Markdown twin with absolute links, a `rel="alternate"` link and, when it is a starting
+  point, an entry in `/llms.txt` (`apps/web/src/server/site-index.ts`).
+
 ## Agent-facing surfaces of the product
 
 If you are an agent using the marketplace rather than changing it: `/llms.txt`, Markdown twins (`<page>.md`),

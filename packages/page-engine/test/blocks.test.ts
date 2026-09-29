@@ -20,11 +20,11 @@ const SAMPLES: Record<string, { valid: Record<string, unknown>; invalid: Record<
   hero: { valid: { title: "Widgets <for> ClarkCant", subtitle: "Curated" }, invalid: { title: "" }, expectHtml: "Widgets &lt;for&gt; ClarkCant", expectMd: "# Widgets \\<for\\> ClarkCant" },
   "rich-text": { valid: { markdown: "## Why\n\nWe **curate** <script>alert(1)</script>" }, invalid: { markdown: 42 }, expectHtml: "<strong>curate</strong>", expectMd: "## Why" },
   media: { valid: { mediaId: "med_1", alt: "Screenshot" }, invalid: { mediaId: "med_1", alt: "" }, expectHtml: 'src="/media/sha256/ab/cd/abcd.png"', expectMd: "![Screenshot](https://market.example/media/sha256/ab/cd/abcd.png)" },
-  "package-grid": { valid: { title: "Latest", limit: 2 }, invalid: { limit: 500 }, expectHtml: 'href="/packages/%40acme/chart-widget"', expectMd: "[Chart](/packages/%40acme/chart-widget)" },
+  "package-grid": { valid: { title: "Latest", limit: 2 }, invalid: { limit: 500 }, expectHtml: 'href="/packages/%40acme/chart-widget"', expectMd: "[Chart](https://market.example/packages/%40acme/chart-widget.md)" },
   "featured-packages": { valid: { title: "Featured" }, invalid: { limit: 0 }, expectHtml: "Chart", expectMd: "## Featured" },
   collection: { valid: { collectionSlug: "starter" }, invalid: { collectionSlug: "Bad Slug" }, expectHtml: "Starter kit", expectMd: "## Starter kit" },
   stats: { valid: { items: [{ label: "Listed", metric: "packages" }, { label: "Uptime", value: "99%" }] }, invalid: { items: [{ label: "Manual", metric: "manual" }] }, expectHtml: "<dd class=\"pe-stat-value\">2</dd>", expectMd: "**Listed:** 2" },
-  cta: { valid: { title: "Publish", primary: { label: "Start", href: "/publish" } }, invalid: { primary: { label: "Evil", href: "javascript:alert(1)" } }, expectHtml: 'href="/publish"', expectMd: "[Start](/publish)" },
+  cta: { valid: { title: "Publish", primary: { label: "Start", href: "/publish" } }, invalid: { primary: { label: "Evil", href: "javascript:alert(1)" } }, expectHtml: 'href="/publish"', expectMd: "[Start](https://market.example/publish)" },
   faq: { valid: { items: [{ question: "Is it free?", answer: "Yes." }] }, invalid: { items: [] }, expectHtml: "<summary>Is it free?</summary>", expectMd: "### Is it free?" },
   comparison: { valid: { columns: ["A", "B"], rows: [{ label: "Fast", values: ["yes", "no"] }] }, invalid: { columns: ["A", "B"], rows: [{ label: "Fast", values: ["yes", "no", "maybe"] }] }, expectHtml: '<th scope="row">Fast</th>', expectMd: "| Fast | yes | no |" },
   "logo-cloud": { valid: { logos: [{ name: "Acme", href: "https://acme.test" }] }, invalid: { logos: [{ name: "X", href: "javascript:x" }] }, expectHtml: 'href="https://acme.test" rel="noopener"', expectMd: "[Acme](https://acme.test)" },
@@ -112,7 +112,19 @@ describe("block rendering safety", () => {
     expect(canvas.html).toContain('data-block-id="cta1"');
     const live = await renderPage(document, renderOptions(port));
     expect(live.html).not.toContain("data-block-id");
-    expect(live.markdown).toContain("[Go](/packages)");
+    expect(live.markdown).toContain("[Go](https://market.example/packages)");
+  });
+
+  it("writes absolute links in the Markdown twin so it stands on its own", async () => {
+    const document = documentWith([
+      { id: "c1", type: "cta", version: 1, props: { primary: { label: "Top", href: "#faq" }, secondary: { label: "Mail", href: "mailto:hi@market.example" } } },
+      { id: "col", type: "collection", version: 1, props: { collectionSlug: "starter" } },
+    ]);
+    const page = await renderPage(document, renderOptions(port));
+    expect(page.markdown).toContain("[Top](https://market.example/about#faq)");
+    expect(page.markdown).toContain("[Mail](mailto:hi@market.example)");
+    expect(page.markdown).toContain("(https://market.example/collections/starter.md)");
+    expect(page.markdown).not.toMatch(/\]\(\//);
   });
 
   it("adds a page heading when the page does not open with a hero", async () => {

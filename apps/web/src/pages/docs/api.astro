@@ -69,7 +69,7 @@ const tags = (document.tags ?? []).filter((tag) => operations.some((operation) =
   <section class="container-page py-10">
     <h1 class="font-display text-4xl sm:text-5xl">API reference</h1>
     <p class="mt-3 max-w-3xl text-lg text-muted">
-      {document.info.title} {document.info.version}. The machine-readable document is
+      {document.info.title} {document.info.version}. The machine-readable document is{" "}
       <a class="underline" href={OPENAPI_PATH}>{OPENAPI_PATH}</a> (OpenAPI 3.1).
     </p>
     <ul class="mt-4 max-w-3xl list-disc space-y-1 pl-6 text-muted">
@@ -80,7 +80,7 @@ const tags = (document.tags ?? []).filter((tag) => operations.some((operation) =
     </ul>
 
     <nav aria-label="API sections" class="mt-6 flex flex-wrap gap-2 text-sm">
-      {tags.map((tag) => <a class="rounded border border-line px-2 py-1 hover:text-ink" href={`#tag-${tag.name}`}>{tag.name}</a>)}
+      {tags.map((tag) => <a class="inline-flex min-h-6 items-center rounded border border-line px-2 py-1 hover:text-ink" href={`#tag-${tag.name}`}>{tag.name}</a>)}
     </nav>
 
     {

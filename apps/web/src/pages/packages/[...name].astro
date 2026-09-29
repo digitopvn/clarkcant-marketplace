@@ -58,11 +58,11 @@ const seo: SeoProps | undefined = pkg ? packageSeo(vars.PUBLIC_SITE_URL, pkg, so
       <article class="container-page py-10">
         <header class="grid gap-3">
           <nav aria-label="Breadcrumb" class="text-sm text-muted">
-            <a href="/packages" class="hover:text-ink">Packages</a>
+            <a href="/packages" class="inline-flex min-h-6 items-center hover:text-ink">Packages</a>
             {pkg.categorySlug && (
               <>
                 {" / "}
-                <a href={`/categories/${pkg.categorySlug}`} class="hover:text-ink">
+                <a href={`/categories/${pkg.categorySlug}`} class="inline-flex min-h-6 items-center hover:text-ink">
                   {pkg.categorySlug}
                 </a>
               </>
@@ -86,11 +86,11 @@ const seo: SeoProps | undefined = pkg ? packageSeo(vars.PUBLIC_SITE_URL, pkg, so
             </li>
             {pkg.license && <li>{pkg.license} license</li>}
             <li>
-              <a href={npmUrl} rel="noopener" class="text-accent underline-offset-4 hover:underline">npm</a>
+              <a href={npmUrl} rel="noopener" class="inline-flex min-h-6 min-w-6 items-center text-accent underline-offset-4 hover:underline">npm</a>
             </li>
             {pkg.repositoryUrl && (
               <li>
-                <a href={pkg.repositoryUrl} rel="noopener nofollow ugc" class="text-accent underline-offset-4 hover:underline">
+                <a href={pkg.repositoryUrl} rel="noopener nofollow ugc" class="inline-flex min-h-6 items-center text-accent underline-offset-4 hover:underline">
                   Source
                 </a>
               </li>
@@ -121,7 +121,7 @@ const seo: SeoProps | undefined = pkg ? packageSeo(vars.PUBLIC_SITE_URL, pkg, so
                     ))}
                   </section>
                 )}
-                <PackageReadme html={latest.readmeHtml} />
+                <PackageReadme html={latest.readmeHtml} title={pkg.displayName} />
               </div>
 
               <aside class="grid content-start gap-5">
@@ -165,7 +165,7 @@ const seo: SeoProps | undefined = pkg ? packageSeo(vars.PUBLIC_SITE_URL, pkg, so
                   </ul>
                 </section>
                 {socialCard && (
-                  <a href={socialCard.url} class="text-xs text-muted underline-offset-4 hover:underline">
+                  <a href={socialCard.url} class="inline-flex min-h-6 items-center justify-self-start text-xs text-muted underline-offset-4 hover:underline">
                     Share card image
                   </a>
                 )}

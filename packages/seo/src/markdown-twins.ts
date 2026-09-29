@@ -155,6 +155,61 @@ export function renderCollectionMarkdown(siteUrl: string, collection: Collection
   ])}\n`;
 }
 
+export interface PackagesIndexMarkdownInput {
+  siteUrl: string;
+  packages: readonly PackageSummary[];
+  categories: readonly Category[];
+  hasMore: boolean;
+}
+
+/** Twin of the unfiltered `/packages` listing (first page). Filtered and paginated views are not indexed. */
+export function renderPackagesIndexMarkdown({ siteUrl, packages, categories, hasMore }: PackagesIndexMarkdownInput): string {
+  const pageUrl = canonicalUrl(siteUrl, "/packages");
+  const searchUrl = canonicalUrl(siteUrl, "/api/v1/packages");
+  return `${joinMarkdown([
+    mdHeading(1, "All packages"),
+    "Widgets, tools, and themes for ClarkCant, listed from npm. A listing never grants a package any permission; ClarkCant asks for consent at install time.",
+    bullet("Web page", mdLink(pageUrl, pageUrl)),
+    bullet("Search", `${mdLink("package search API", searchUrl)} (query parameters \`q\`, \`category\`, \`kind\`, \`isolation\`, \`platform\`, \`curation\`)`),
+    categories.length > 0
+      ? joinMarkdown([
+          mdHeading(2, "Categories"),
+          categories
+            .map((category) => `- ${mdLink(category.name, canonicalUrl(siteUrl, markdownPathFor(categoryPath(category.slug))))} (${category.packageCount})`)
+            .join("\n"),
+        ])
+      : "",
+    mdHeading(2, "Packages"),
+    renderPackageListMarkdown(siteUrl, packages, "No packages are listed yet."),
+    hasMore ? `More packages: page through the ${mdLink("package search API", searchUrl)}.` : "",
+  ])}\n`;
+}
+
+export interface CollectionsIndexEntry {
+  slug: string;
+  title: string;
+  description?: string | null | undefined;
+}
+
+/** Twin of `/collections`. */
+export function renderCollectionsIndexMarkdown(siteUrl: string, collections: readonly CollectionsIndexEntry[]): string {
+  const pageUrl = canonicalUrl(siteUrl, "/collections");
+  return `${joinMarkdown([
+    mdHeading(1, "Collections"),
+    "Hand-picked sets of packages, chosen by the marketplace curators.",
+    bullet("Web page", mdLink(pageUrl, pageUrl)),
+    collections.length > 0
+      ? collections
+          .map((collection) => {
+            const url = canonicalUrl(siteUrl, markdownPathFor(collectionPath(collection.slug)));
+            const description = collection.description ? `: ${escapeMarkdown(collection.description.replace(/\s+/g, " ").trim())}` : "";
+            return `- ${mdLink(collection.title, url)}${description}`;
+          })
+          .join("\n")
+      : "Curators have not published a collection yet.",
+  ])}\n`;
+}
+
 export interface HomeMarkdownInput {
   siteUrl: string;
   featured: readonly PackageSummary[];

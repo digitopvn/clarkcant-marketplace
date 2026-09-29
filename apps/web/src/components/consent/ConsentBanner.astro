@@ -13,16 +13,16 @@
   hidden
   data-consent-banner
 >
-  <div class="container-page flex flex-col gap-3 py-4 sm:flex-row sm:items-end sm:justify-between">
+  <div class="container-page flex flex-col gap-2 py-2.5 sm:flex-row sm:items-end sm:justify-between sm:gap-3 sm:py-4">
     <div class="max-w-2xl text-sm">
       <h2 id="cookie-consent-title" class="font-medium text-ink">Cookies and storage</h2>
-      <p class="mt-1 text-muted">
+      <p class="consent-copy mt-0.5 text-muted sm:mt-1">
         Essential cookies keep you signed in and remember this choice. With your permission we also remember your
-        theme on this device. There is no analytics or advertising tracking.
+        theme on this device. There is no analytics or advertising tracking.{" "}
         <a class="text-accent underline" href="/cookies">Cookie policy</a>
       </p>
     </div>
-    <div class="flex shrink-0 flex-wrap gap-2">
+    <div class="flex shrink-0 gap-2">
       <button type="button" class="consent-button" data-consent-choice="essential">Essential only</button>
       <button type="button" class="consent-button consent-button-primary" data-consent-choice="preferences">
         Allow preferences

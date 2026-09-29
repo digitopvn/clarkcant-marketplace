@@ -58,11 +58,15 @@ const hasPackages = featured.length > 0 || latest.length > 0;
   {
     landing ? (
       <Fragment>
-        {/* Search stays on the home page whichever landing is shown. */}
-        <div class="container-page max-w-xl pt-8">
-          <PackageSearchForm />
+        {/* Search stays on the home page whichever landing is shown, on the same left edge as the page content. */}
+        <div class="container-page pt-6">
+          <div class="max-w-xl">
+            <PackageSearchForm />
+          </div>
         </div>
-        <RenderedPage html={landing.rendered.html} structuredData={landing.rendered.structuredData} />
+        <div class="home-landing">
+          <RenderedPage html={landing.rendered.html} structuredData={landing.rendered.structuredData} />
+        </div>
       </Fragment>
     ) : (
       <Fragment>

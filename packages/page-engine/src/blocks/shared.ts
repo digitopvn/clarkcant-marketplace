@@ -69,12 +69,23 @@ export function packageCards(packages: readonly PackageSummary[]): string {
   return `<ul class="pe-grid">${items}</ul>`;
 }
 
-export function packageListMarkdown(packages: readonly PackageSummary[]): string {
+/**
+ * A link target as it must appear in a Markdown twin, which is read on its own (pasted into an assistant, fetched by
+ * an agent): site paths and fragments become absolute URLs; mailto and external URLs are unchanged.
+ */
+export function markdownHref(siteUrl: string, pagePath: string, href: string): string {
+  if (href.startsWith("#")) return `${absoluteUrl(siteUrl, pagePath)}${href}`;
+  if (href.startsWith("/")) return absoluteUrl(siteUrl, href);
+  return href;
+}
+
+/** Package lines for a Markdown twin; each links the package's own Markdown twin by absolute URL. */
+export function packageListMarkdown(packages: readonly PackageSummary[], siteUrl: string): string {
   return packages
     .map((pkg) => {
       const description = pkg.description ? ` — ${escapeMarkdown(pkg.description)}` : "";
       const version = pkg.latestVersion ? ` (v${escapeMarkdown(pkg.latestVersion)})` : "";
-      return `- ${mdLink(pkg.displayName, packagePath(pkg.name))}${version}${description}`;
+      return `- ${mdLink(pkg.displayName, absoluteUrl(siteUrl, `${packagePath(pkg.name)}.md`))}${version}${description}`;
     })
     .join("\n");
 }

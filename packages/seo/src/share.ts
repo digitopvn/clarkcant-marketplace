@@ -14,7 +14,7 @@ export interface SharePayload {
 }
 
 export interface ShareTarget {
-  id: "chatgpt" | "claude" | "gemini";
+  id: "chatgpt" | "claude" | "perplexity" | "gemini";
   label: string;
   /** True when the provider reads the prompt from the URL; false when the user pastes a copied prompt. */
   prefill: boolean;
@@ -45,6 +45,12 @@ export const SHARE_TARGETS: readonly ShareTarget[] = [
     label: "Claude",
     prefill: true,
     url: (payload) => `https://claude.ai/new?q=${encodeURIComponent(sharePrompt(payload))}`,
+  },
+  {
+    id: "perplexity",
+    label: "Perplexity",
+    prefill: true,
+    url: (payload) => `https://www.perplexity.ai/search?q=${encodeURIComponent(sharePrompt(payload))}`,
   },
   {
     // Gemini has no documented prompt parameter: open it and let the user paste the copied prompt.

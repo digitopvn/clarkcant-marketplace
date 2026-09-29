@@ -1,11 +1,20 @@
-import type { Category, CollectionDetail, PackageDetail, PackagePreview, PackageSummary } from "@marketplace/contracts";
+import type {
+  Category,
+  CollectionDetail,
+  CollectionSummary,
+  PackageDetail,
+  PackagePreview,
+  PackageSummary,
+} from "@marketplace/contracts";
 import {
   breadcrumbJsonLd,
   categoryJsonLd,
   categoryPath,
   collectionJsonLd,
   collectionPath,
+  itemListJsonLd,
   packageJsonLd,
+  packageListEntries,
   packagePath,
   type SocialImage,
 } from "@marketplace/seo";
@@ -50,6 +59,36 @@ export function categorySeo(siteUrl: string, category: Category, items: readonly
         { name: "Packages", path: "/packages" },
         { name: category.name, path },
       ]),
+    ],
+  };
+}
+
+/** The package listing: only the unfiltered first page is indexed, has a Markdown twin and carries its list. */
+export function packagesIndexSeo(siteUrl: string, items: readonly PackageSummary[], indexable: boolean): SeoProps {
+  return {
+    path: "/packages",
+    markdown: indexable,
+    noindex: !indexable,
+    share: indexable,
+    jsonLd: indexable
+      ? [
+          itemListJsonLd(siteUrl, "ClarkCant packages", packageListEntries(items)),
+          breadcrumbJsonLd(siteUrl, [{ name: "Packages", path: "/packages" }]),
+        ]
+      : [],
+  };
+}
+
+export function collectionsIndexSeo(siteUrl: string, collections: readonly CollectionSummary[]): SeoProps {
+  return {
+    path: "/collections",
+    jsonLd: [
+      itemListJsonLd(
+        siteUrl,
+        "ClarkCant package collections",
+        collections.map((collection) => ({ name: collection.title, path: collectionPath(collection.slug) })),
+      ),
+      breadcrumbJsonLd(siteUrl, [{ name: "Collections", path: "/collections" }]),
     ],
   };
 }

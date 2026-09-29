@@ -1,6 +1,7 @@
 ---
 import { actorHasScope } from "@marketplace/contracts";
 
+import OrbMark from "./OrbMark.astro";
 import ThemeToggle from "./ThemeToggle.astro";
 
 const path = Astro.url.pathname;
@@ -10,7 +11,7 @@ const signedIn = actor.type !== "anonymous";
 const links = [
   { href: "/packages", label: "Packages" },
   { href: "/collections", label: "Collections" },
-  { href: "/openapi.json", label: "API" },
+  { href: "/docs/api", label: "API" },
   ...(signedIn && actorHasScope(actor, "admin") ? [{ href: "/admin/pages", label: "Admin" }] : []),
   signedIn ? { href: "/account", label: "Account" } : { href: `/login?next=${encodeURIComponent(path)}`, label: "Sign in" },
 ];
@@ -26,9 +27,12 @@ const linkClass = "rounded-full px-3 py-1.5 text-muted hover:bg-accent-soft hove
 
 <header class="border-b border-line">
   <div class="container-page flex items-center justify-between gap-2 py-4">
-    <a href="/" class="flex min-w-0 items-baseline gap-2 text-ink no-underline">
-      <span class="font-display text-2xl leading-none">ClarkCant</span>
-      <span class="text-sm text-muted">Marketplace</span>
+    <a href="/" class="flex min-w-0 items-center gap-2 text-ink no-underline">
+      <OrbMark id="orb-header" />
+      <span class="flex min-w-0 items-baseline gap-2">
+        <span class="font-display text-2xl leading-none">ClarkCant</span>
+        <span class="text-sm text-muted max-[399px]:sr-only">Marketplace</span>
+      </span>
     </a>
     <div class="flex items-center gap-1 text-sm">
       <nav aria-label="Primary" class="hidden items-center gap-1 md:flex">

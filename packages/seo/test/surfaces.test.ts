@@ -7,10 +7,12 @@ import {
   parseSitemapSegment,
   renderCategoryMarkdown,
   renderCollectionMarkdown,
+  renderCollectionsIndexMarkdown,
   renderHomeMarkdown,
   renderLlmsFullTxt,
   renderLlmsTxt,
   renderPackageMarkdown,
+  renderPackagesIndexMarkdown,
   renderRobotsTxt,
   renderSitemapIndex,
   renderUrlset,
@@ -127,6 +129,7 @@ describe("share targets", () => {
     }
     expect(getShareTarget("chatgpt")?.url(payload)).toMatch(/^https:\/\/chatgpt\.com\/\?q=/);
     expect(getShareTarget("claude")?.url(payload)).toMatch(/^https:\/\/claude\.ai\/new\?q=/);
+    expect(getShareTarget("perplexity")?.url(payload)).toMatch(/^https:\/\/www\.perplexity\.ai\/search\?q=/);
   });
 
   it("opens providers without prefill support on their start page", () => {
@@ -187,5 +190,25 @@ describe("Markdown twins", () => {
     const empty = renderHomeMarkdown({ siteUrl: SITE, featured: [], latest: [], categories: [] });
     expect(empty).not.toContain("## Featured");
     expect(empty).toContain("No packages are listed yet.");
+  });
+
+  it("renders the package listing and collections index with absolute links only", () => {
+    const listing = renderPackagesIndexMarkdown({
+      siteUrl: SITE,
+      packages: [summary("@s/a")],
+      categories: [{ slug: "widgets", name: "Widgets", description: "", packageCount: 1 }],
+      hasMore: true,
+    });
+    expect(listing.startsWith("# All packages\n")).toBe(true);
+    expect(listing).toContain(`[@s/a](${SITE}/packages/%40s/a.md)`);
+    expect(listing).toContain(`[Widgets](${SITE}/categories/widgets.md) (1)`);
+    expect(listing).toContain(`${SITE}/api/v1/packages`);
+    expect(listing).not.toMatch(/\]\(\//);
+    expect(renderPackagesIndexMarkdown({ siteUrl: SITE, packages: [], categories: [], hasMore: false })).toContain("No packages are listed yet.");
+
+    const collections = renderCollectionsIndexMarkdown(SITE, [{ slug: "picks", title: "Picks", description: "Our *picks*" }]);
+    expect(collections.startsWith("# Collections\n")).toBe(true);
+    expect(collections).toContain(`[Picks](${SITE}/collections/picks.md): Our \\*picks\\*`);
+    expect(renderCollectionsIndexMarkdown(SITE, [])).toContain("Curators have not published a collection yet.");
   });
 });

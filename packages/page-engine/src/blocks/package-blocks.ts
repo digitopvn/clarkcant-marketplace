@@ -41,8 +41,8 @@ export const packageGridBlock = defineBlock<z.infer<typeof packageGridProps>, Pa
   renderWeb: ({ props, data }) =>
     `<section class="pe-block pe-packages">${sectionHeading(props.title)}` +
     `${data.length ? packageCards(data) : emptyState("No packages are listed here yet.")}</section>`,
-  renderMarkdown: ({ props, data }) =>
-    joinMarkdown([props.title ? mdHeading(2, props.title) : "", data.length ? packageListMarkdown(data) : "_No packages are listed here yet._"]),
+  renderMarkdown: ({ props, data, siteUrl }) =>
+    joinMarkdown([props.title ? mdHeading(2, props.title) : "", data.length ? packageListMarkdown(data, siteUrl) : "_No packages are listed here yet._"]),
   getStructuredData: ({ props, data, siteUrl }) => packageItemList(props.title || "Packages", data, siteUrl),
   getSemanticSummary: ({ props, data }) =>
     `${data.length} package${data.length === 1 ? "" : "s"}${props.category ? ` in category "${props.category}"` : ""}` +
@@ -79,8 +79,8 @@ export const featuredPackagesBlock = defineBlock<z.infer<typeof featuredProps>, 
   renderWeb: ({ props, data }) =>
     `<section class="pe-block pe-packages pe-featured">${sectionHeading(props.title)}` +
     `${data.length ? packageCards(data) : emptyState("Nothing is featured right now.")}</section>`,
-  renderMarkdown: ({ props, data }) =>
-    joinMarkdown([props.title ? mdHeading(2, props.title) : "", data.length ? packageListMarkdown(data) : "_Nothing is featured right now._"]),
+  renderMarkdown: ({ props, data, siteUrl }) =>
+    joinMarkdown([props.title ? mdHeading(2, props.title) : "", data.length ? packageListMarkdown(data, siteUrl) : "_Nothing is featured right now._"]),
   getStructuredData: ({ props, data, siteUrl }) => packageItemList(props.title || "Featured packages", data, siteUrl),
   getSemanticSummary: ({ data }) =>
     data.length ? `Featured packages: ${listNames(data)}.` : "Featured packages (none right now).",
@@ -120,14 +120,14 @@ export const collectionBlock = defineBlock<z.infer<typeof collectionProps>, Coll
       `${packages.length ? packageCards(packages) : emptyState("This collection has no listed packages yet.")}${more}</section>`
     );
   },
-  renderMarkdown: ({ props, data }) => {
+  renderMarkdown: ({ props, data, siteUrl }) => {
     if (!data) return "";
     const packages = data.packages.slice(0, props.limit);
     return joinMarkdown([
       mdHeading(2, props.title || data.title),
       props.showDescription ? escapeMarkdown(data.description) : "",
-      packages.length ? packageListMarkdown(packages) : "_This collection has no listed packages yet._",
-      mdLink(`See the whole ${data.title} collection`, `/collections/${data.slug}`),
+      packages.length ? packageListMarkdown(packages, siteUrl) : "_This collection has no listed packages yet._",
+      mdLink(`See the whole ${data.title} collection`, absoluteUrl(siteUrl, `/collections/${data.slug}.md`)),
     ]);
   },
   getStructuredData: ({ props, data, siteUrl }) =>
@@ -176,12 +176,12 @@ export const publisherProfileBlock = defineBlock<z.infer<typeof publisherProps>,
       `<h2 class="pe-heading">${escapeHtml(data.name)}${badge}</h2>${intro}${packages}</section>`
     );
   },
-  renderMarkdown: ({ props, data }) => {
+  renderMarkdown: ({ props, data, siteUrl }) => {
     if (!data) return "";
     return joinMarkdown([
       mdHeading(2, `${data.name}${data.verified ? " (verified publisher)" : ""}`),
       escapeMarkdown(props.intro),
-      props.showPackages ? packageListMarkdown(data.packages) : "",
+      props.showPackages ? packageListMarkdown(data.packages, siteUrl) : "",
     ]);
   },
   getStructuredData: ({ data, siteUrl, path }) =>

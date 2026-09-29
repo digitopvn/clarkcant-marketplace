@@ -5,7 +5,7 @@ import { defineBlock } from "../define-block";
 import { escapeHtml, isExternalUrl, packagePath, safeHref } from "../html";
 import { escapeMarkdown, joinMarkdown, mdCode, mdHeading, mdLink } from "../markdown-text";
 import type { MediaAsset } from "../types";
-import { hrefSchema, mediaIdSchema, optionalHeading, packageNameField, plainText, requiredText, sectionHeading } from "./shared";
+import { hrefSchema, markdownHref, mediaIdSchema, optionalHeading, packageNameField, plainText, requiredText, sectionHeading } from "./shared";
 
 const logoProps = z.object({
   title: optionalHeading,
@@ -44,10 +44,12 @@ export const logoCloudBlock = defineBlock<LogoProps, (MediaAsset | null)[]>({
       .join("");
     return `<section class="pe-block pe-logos">${sectionHeading(props.title)}<ul class="pe-logo-list">${items}</ul></section>`;
   },
-  renderMarkdown: ({ props }) =>
+  renderMarkdown: ({ props, siteUrl, path }) =>
     joinMarkdown([
       props.title ? mdHeading(2, props.title) : "",
-      props.logos.map((logo) => `- ${logo.href ? mdLink(logo.name, logo.href) : escapeMarkdown(logo.name)}`).join("\n"),
+      props.logos
+        .map((logo) => `- ${logo.href ? mdLink(logo.name, markdownHref(siteUrl, path, logo.href)) : escapeMarkdown(logo.name)}`)
+        .join("\n"),
     ]),
   getSemanticSummary: ({ props }) => `Logos: ${props.logos.map((logo) => logo.name).join(", ")}.`,
   editor: {

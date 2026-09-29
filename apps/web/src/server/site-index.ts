@@ -48,7 +48,7 @@ const LLMS_FULL_MAX_PAGES = 50;
 export const TRUST_NOTES = [
   "Curation: \"listed\" means a package passed automated checks (manifest, integrity) when indexed and was not reviewed by a person; \"featured\" means marketplace curators chose it. Hidden and rejected packages are not published anywhere.",
   "A \"verified\" publisher proved control of a web domain with a DNS TXT record; it says nothing about code quality. npm provenance is recorded when present, not verified by the marketplace.",
-  "Every public HTML page has a Markdown twin at the same path plus `.md` (the home page: `/index.md`).",
+  "Every indexable catalogue and content page has a Markdown twin at the same path plus `.md` (the home page: `/index.md`); the API reference's machine-readable form is `/openapi.json`.",
 ];
 
 function indexablePages(pages: readonly PublishedPageEntry[]): PublishedPageEntry[] {
@@ -161,6 +161,8 @@ export async function buildLlmsTxt(deps: MarketplaceDeps, siteUrl: string): Prom
         title: "Start here",
         links: [
           { title: "Home", url: twin(siteUrl, "/"), description: "What the marketplace lists and how installing works" },
+          { title: "All packages", url: twin(siteUrl, "/packages"), description: "The package listing, with categories and the search API" },
+          { title: "Collections", url: twin(siteUrl, "/collections"), description: "Curated sets of packages" },
           { title: "HTTP API (OpenAPI 3.1)", url: canonicalUrl(siteUrl, "/openapi.json"), description: "Search, package details, install coordinates" },
           ...pages.filter((page) => page.kind !== "legal" && page.path !== "/").map(pageLink),
         ],

@@ -138,6 +138,39 @@ test.describe("machine-readable surfaces", () => {
     expect(await response.text()).toMatch(/^# \S/m);
   });
 
+  for (const path of ["/packages", "/collections"]) {
+    test(`${path} has a Markdown twin, an alternate link and an ItemList`, async ({ request }) => {
+      const twin = await request.get(`${path}.md`);
+      expect(twin.status()).toBe(200);
+      expect(twin.headers()["content-type"]).toContain("text/markdown");
+      expect(twin.headers()["link"]).toMatch(new RegExp(`${path}>; rel="canonical"`));
+      const body = await twin.text();
+      expect(body).toMatch(/^# \S/);
+      // A twin is read on its own, so it never links a bare site path.
+      expect(body).not.toMatch(/\]\(\//);
+      const html = await (await request.get(path)).text();
+      expect(html).toMatch(new RegExp(`<link rel="alternate" type="text/markdown" href="[^"]+${path}\\.md"`));
+      expect(jsonLdNodes(html).map((node) => node["@type"])).toEqual(expect.arrayContaining(["ItemList", "BreadcrumbList"]));
+    });
+  }
+
+  test("filtered package listings are noindex and advertise no twin", async ({ request }) => {
+    const html = await (await request.get("/packages?q=frame")).text();
+    expect(html).toContain('content="noindex');
+    expect(html).not.toContain('type="text/markdown"');
+  });
+
+  test("llms.txt stays fetchable but out of search results", async ({ request }) => {
+    for (const path of ["/llms.txt", "/llms-full.txt"]) {
+      const response = await request.get(path);
+      expect(response.status()).toBe(200);
+      expect(response.headers()["x-robots-tag"]).toBe("noindex");
+    }
+    const text = await (await request.get("/llms.txt")).text();
+    expect(text).toMatch(/\]\(https?:\/\/\S+\/packages\.md\)/);
+    expect(text).toMatch(/\]\(https?:\/\/\S+\/collections\.md\)/);
+  });
+
   test("a builder page twin equals the page engine's Markdown for the live revision", async ({ request }) => {
     const path = await firstBuilderPagePath(request);
     test.skip(!path, "No published builder page (use the admin 'Create default pages' button)");
@@ -177,6 +210,10 @@ test.describe("share bar", () => {
     const prompt = new URL(chatgpt ?? "").searchParams.get("q") ?? "";
     expect(prompt).toMatch(/\.md \(web page: https?:\/\//);
     expect(await bar.getByRole("link", { name: /Ask Claude/ }).getAttribute("href")).toMatch(/^https:\/\/claude\.ai\/new\?q=/);
+    expect(await bar.getByRole("link", { name: /Ask Perplexity/ }).getAttribute("href")).toMatch(/^https:\/\/www\.perplexity\.ai\/search\?q=/);
+    // The Markdown copy leads, and the twin is one plain link away without JavaScript.
+    await expect(bar.getByRole("button").first()).toHaveText("Copy as Markdown");
+    expect(await bar.getByRole("link", { name: "View as Markdown" }).getAttribute("href")).toBe(`${path}.md`);
 
     await bar.getByRole("button", { name: "Copy URL" }).click();
     await expect(bar.getByRole("status")).toHaveText("Page URL and Markdown URL copied.");
@@ -237,6 +274,51 @@ test.describe("accessibility and layout", () => {
       await expectNoSeriousA11yViolations(page);
     });
   }
+
+  test("the package listing reflows at 320px and applies a filter as soon as it changes", async ({ page }) => {
+    await page.setViewportSize({ width: 320, height: 700 });
+    await page.goto("/packages", { waitUntil: "networkidle" });
+    await expectFitsWidth(page, 320);
+    const slug = await page.getByLabel("Category").locator("option").nth(1).getAttribute("value").catch(() => null);
+    test.skip(!slug, "No categories to filter by");
+    await Promise.all([
+      page.waitForURL(new RegExp(`/packages\\?.*category=${slug}`)),
+      page.getByLabel("Category").selectOption(slug ?? ""),
+    ]);
+    await expect(page.getByRole("link", { name: "Clear filters" })).toHaveAttribute("href", "/packages");
+  });
+
+  test("footer links and buttons have at least a 24px target", async ({ page }) => {
+    await page.setViewportSize({ width: 375, height: 800 });
+    await page.goto("/");
+    const footer = page.locator("footer");
+    const sizes = await footer.locator("a, button").evaluateAll((elements) =>
+      elements.map((element) => {
+        const box = element.getBoundingClientRect();
+        return { name: element.textContent?.trim() ?? "", width: box.width, height: box.height };
+      }),
+    );
+    expect(sizes.length).toBeGreaterThan(0);
+    expect(sizes.filter((size) => size.height < 24 || size.width < 24)).toEqual([]);
+  });
+
+  test("cookie banner copy keeps its spacing and leaves most of a phone screen free", async ({ page }) => {
+    await page.setViewportSize({ width: 375, height: 812 });
+    await page.goto("/");
+    const banner = page.getByRole("region", { name: "Cookies and storage" });
+    await expect(banner).toBeVisible();
+    await expect(banner).toContainText("tracking. Cookie policy");
+    expect((await banner.boundingBox())?.height ?? 999).toBeLessThanOrEqual(160);
+  });
+
+  test("interaction feedback is timed by tokens and stops under reduced motion", async ({ page }) => {
+    await page.goto("/");
+    const duration = () =>
+      page.locator(".chrome-button, .consent-button").first().evaluate((element) => getComputedStyle(element).transitionDuration);
+    expect(await duration()).not.toBe("0s");
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    expect((await duration()).split(",").every((value) => value.trim() === "0s")).toBe(true);
+  });
 
   test("public pages stay within the JavaScript budget", async ({ page }) => {
     test.skip(!BUILT, "Dev servers ship unbundled modules; measure a production build (E2E_BUILT=1)");

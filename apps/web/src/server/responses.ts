@@ -27,8 +27,14 @@ export function markdownResponse(body: string, options: MarkdownResponseOptions)
   return new Response(body, { status: 200, headers });
 }
 
-export function textResponse(body: string): Response {
-  return new Response(body, { status: 200, headers: { "content-type": "text/plain; charset=utf-8", "cache-control": PUBLIC_CACHE } });
+/**
+ * Plain text. `noindex` keeps agent-facing guides (llms.txt) out of search results while they stay fetchable, so a
+ * search hit lands on the HTML page instead.
+ */
+export function textResponse(body: string, options: { noindex?: boolean } = {}): Response {
+  const headers = new Headers({ "content-type": "text/plain; charset=utf-8", "cache-control": PUBLIC_CACHE });
+  if (options.noindex) headers.set("x-robots-tag", "noindex");
+  return new Response(body, { status: 200, headers });
 }
 
 export function xmlResponse(body: string): Response {

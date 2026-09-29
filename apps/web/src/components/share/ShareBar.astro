@@ -2,7 +2,8 @@
 import { SHARE_TARGETS, shareFallbackText, type SharePayload } from "@marketplace/seo/share";
 
 /**
- * Share and "ask an assistant" actions for one canonical page. Prefill links work without JavaScript; the copy and
+ * Share and "ask an assistant" actions for one canonical page. Copying the page as Markdown leads (it is what an
+ * assistant reads best); "View as Markdown" and the prefill links work without JavaScript; the copy and
  * native-share buttons are enhanced by the script and stay hidden until it runs. When the clipboard or the Web Share
  * API is unavailable, the canonical URL and the Markdown URL are shown for manual copying instead.
  */
@@ -14,16 +15,23 @@ const payload: SharePayload = {
   markdownUrl: Astro.props.markdownUrl,
 };
 const fallback = shareFallbackText(payload);
+// Same-origin path, so "View as Markdown" also works on preview aliases whose host differs from PUBLIC_SITE_URL.
+const markdownPath = payload.markdownUrl ? new URL(payload.markdownUrl).pathname : null;
 ---
 
 <aside class="container-page mt-12" aria-labelledby="share-title" data-share-bar data-share={JSON.stringify(payload)}>
   <div class="flex flex-col gap-3 rounded-2xl border border-line bg-raised p-4 sm:flex-row sm:items-center sm:justify-between">
     <h2 id="share-title" class="text-sm font-medium text-ink">Share or ask an assistant</h2>
     <div class="flex flex-wrap gap-2">
-      <button type="button" class="chrome-button" data-share-action="copy-url" hidden>Copy URL</button>
       {payload.markdownUrl && (
-        <button type="button" class="chrome-button" data-share-action="copy-markdown" hidden>Copy as Markdown</button>
+        <button type="button" class="chrome-button chrome-button-primary" data-share-action="copy-markdown" hidden>
+          Copy as Markdown
+        </button>
       )}
+      {payload.markdownUrl && (
+        <a class="chrome-button no-underline" href={markdownPath} type="text/markdown">View as Markdown</a>
+      )}
+      <button type="button" class="chrome-button" data-share-action="copy-url" hidden>Copy URL</button>
       <button type="button" class="chrome-button" data-share-action="native" hidden>Share…</button>
       {
         SHARE_TARGETS.map((target) =>

@@ -10,10 +10,10 @@ export const BLOCK_STYLES = `
 .pe-page-header { margin-bottom: var(--space-7, 3rem); }
 .pe-block { min-width: 0; }
 .pe-eyebrow { font-family: var(--font-mono); font-size: 0.75rem; letter-spacing: 0.12em; text-transform: uppercase; color: var(--text-faint); margin: 0 0 var(--space-3, .75rem); }
-.pe-display { font-family: var(--font-display); font-weight: 400; font-size: var(--step-3, 2.75rem); line-height: 1.05; margin: 0; max-width: 22ch; overflow-wrap: anywhere; }
-.pe-heading { font-family: var(--font-display); font-weight: 400; font-size: var(--step-2, 1.75rem); line-height: 1.15; margin: 0 0 var(--space-5, 1.5rem); overflow-wrap: anywhere; }
+.pe-display { font-family: var(--font-display); font-weight: 400; font-size: var(--step-3, 2.75rem); line-height: 1.05; margin: 0; max-width: 22ch; overflow-wrap: anywhere; text-wrap: balance; }
+.pe-heading { font-family: var(--font-display); font-weight: 400; font-size: var(--step-2, 1.75rem); line-height: 1.15; margin: 0 0 var(--space-5, 1.5rem); overflow-wrap: anywhere; text-wrap: balance; }
 h3.pe-heading { font-size: var(--step-1, 1.25rem); font-family: var(--font-sans); font-weight: 600; }
-.pe-lede { color: var(--text-muted); font-size: var(--step-1, 1.125rem); line-height: 1.55; max-width: 62ch; margin: var(--space-4, 1rem) 0 0; }
+.pe-lede { color: var(--text-muted); font-size: var(--step-1, 1.125rem); line-height: 1.55; max-width: 62ch; margin: var(--space-4, 1rem) 0 0; text-wrap: pretty; }
 .pe-faint { color: var(--text-faint); }
 .pe-mono { font-family: var(--font-mono); font-size: 0.75rem; overflow-wrap: anywhere; margin: 0; }
 .pe-hero { padding-block: var(--space-6, 2rem) var(--space-4, 1rem); }
@@ -66,8 +66,9 @@ h3.pe-heading { font-size: var(--step-1, 1.25rem); font-family: var(--font-sans)
 .pe-actions { display: flex; flex-wrap: wrap; gap: var(--space-3, .75rem); margin-top: var(--space-5, 1.25rem); }
 .pe-hero-children .pe-actions { margin-top: 0; }
 .pe-align-center .pe-actions { justify-content: center; }
-.pe-button { display: inline-flex; align-items: center; min-height: 44px; padding: 0 1.25rem; border-radius: var(--radius-pill, 999px); background: var(--accent); color: var(--on-accent); font-weight: 500; text-decoration: none; transition: filter var(--dur-micro, 140ms) var(--ease-out, ease-out); }
+.pe-button { display: inline-flex; align-items: center; min-height: 44px; padding: 0 1.25rem; border-radius: var(--radius-pill, 999px); background: var(--accent); color: var(--on-accent); font-weight: 500; text-decoration: none; transition: filter var(--dur-micro, 140ms) var(--ease-out, ease-out), transform var(--dur-micro, 140ms) var(--ease-out, ease-out); }
 .pe-button:hover { filter: brightness(1.08); }
+.pe-button:active { transform: scale(0.97); }
 .pe-button-quiet { background: transparent; color: var(--text); border: 1px solid var(--line-strong); }
 .pe-faq-item { border-bottom: 1px solid var(--line); }
 .pe-faq-item summary { cursor: pointer; padding: var(--space-4, 1rem) 0; font-weight: 500; min-height: 44px; }

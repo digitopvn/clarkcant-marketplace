@@ -2,16 +2,21 @@
 interface Props {
   /** README HTML sanitized by `@marketplace/markdown` at index time. Never pass unsanitized HTML here. */
   html: string | null;
+  /** Package display name, already shown as the page's h1; a README title repeating it is not shown twice. */
+  title?: string;
 }
 
-const { html } = Astro.props;
+import { nestReadmeHeadings } from "./readme-headings";
+
+const { html, title } = Astro.props;
+const nested = html ? nestReadmeHeadings(html, title) : null;
 ---
 
 <section aria-labelledby="readme-heading" class="min-w-0">
   <h2 id="readme-heading" class="sr-only">README</h2>
   {
-    html ? (
-      <div class="readme" set:html={html} />
+    nested ? (
+      <div class="readme" set:html={nested} />
     ) : (
       <p class="rounded-card border border-dashed border-line bg-raised p-6 text-muted">This version ships no README.</p>
     )
@@ -23,22 +28,30 @@ const { html } = Astro.props;
     line-height: 1.65;
     overflow-wrap: anywhere;
   }
-  .readme :global(h1),
-  .readme :global(h2),
-  .readme :global(h3) {
+  .readme :global([data-readme-level]) {
+    font-weight: 600;
+    line-height: 1.3;
+    margin: 1.4em 0 0.4em;
+  }
+  .readme :global([data-readme-level="1"]),
+  .readme :global([data-readme-level="2"]),
+  .readme :global([data-readme-level="3"]) {
     font-family: var(--font-display);
+    font-weight: 400;
     line-height: 1.15;
     margin: 1.6em 0 0.5em;
   }
-  .readme :global(h1) {
+  .readme :global([data-readme-level="1"]) {
     font-size: var(--step-3);
-    margin-top: 0;
   }
-  .readme :global(h2) {
+  .readme :global([data-readme-level="2"]) {
     font-size: var(--step-2);
   }
-  .readme :global(h3) {
+  .readme :global([data-readme-level="3"]) {
     font-size: var(--step-1);
+  }
+  .readme > :global(:first-child) {
+    margin-top: 0;
   }
   .readme :global(p),
   .readme :global(ul),

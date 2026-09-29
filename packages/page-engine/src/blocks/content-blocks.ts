@@ -4,7 +4,7 @@ import { defineBlock } from "../define-block";
 import { escapeHtml, link } from "../html";
 import { escapeMarkdown, joinMarkdown, mdHeading, mdLink, mdTableCell } from "../markdown-text";
 import type { MarketplaceStats } from "../types";
-import { hrefSchema, optionalHeading, plainText, requiredText, sectionHeading } from "./shared";
+import { hrefSchema, markdownHref, optionalHeading, plainText, requiredText, sectionHeading } from "./shared";
 
 /* Blocks whose content is authored in the page itself (plus `stats`, which can bind live counts). */
 
@@ -129,11 +129,14 @@ export const ctaBlock = defineBlock({
       `${link(props.primary.href, props.primary.label, "pe-button")}${secondary}</div></section>`
     );
   },
-  renderMarkdown: ({ props }) =>
+  renderMarkdown: ({ props, siteUrl, path }) =>
     joinMarkdown([
       props.title ? mdHeading(2, props.title) : "",
       escapeMarkdown(props.body),
-      [mdLink(props.primary.label, props.primary.href), props.secondary ? mdLink(props.secondary.label, props.secondary.href) : ""]
+      [
+        mdLink(props.primary.label, markdownHref(siteUrl, path, props.primary.href)),
+        props.secondary ? mdLink(props.secondary.label, markdownHref(siteUrl, path, props.secondary.href)) : "",
+      ]
         .filter(Boolean)
         .join(" · "),
     ]),
