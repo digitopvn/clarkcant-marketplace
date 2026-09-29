@@ -1,6 +1,6 @@
 # Phase 03 — npm indexing, packages, media (M3)
 
-Status: pending · Wave 2 (parallel with 02, 04) · Depends on 01.
+Status: implemented (verify + build green, 2026-09-29) · Wave 2 (parallel with 02, 04) · Depends on 01. Report: `plans/reports/fullstack-developer-260929-2015-phase-03-package-indexing.md`.
 
 ## Owns (only these files)
 - `packages/marketplace/src/packages/**`, `src/indexing/**`, `src/collections/**`, `src/search/**` (+ tests)

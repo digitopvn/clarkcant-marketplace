@@ -1,0 +1,20 @@
+---
+import { BLOCK_STYLES, jsonForScript } from "@marketplace/page-engine";
+
+/**
+ * Shell for HTML produced by the page engine's `renderPage`. The HTML is already escaped by the engine (rich text
+ * goes through the strict Markdown sanitizer), so it is inserted as-is. Block styles use the brand token variables.
+ */
+interface Props {
+  html: string;
+  structuredData: Record<string, unknown>[];
+}
+
+const { html, structuredData } = Astro.props;
+---
+
+<style is:inline set:html={BLOCK_STYLES} />
+{structuredData.length > 0 && <script type="application/ld+json" is:inline set:html={jsonForScript(structuredData.length === 1 ? structuredData[0] : structuredData)} />}
+<div class="container-page py-10">
+  <Fragment set:html={html} />
+</div>

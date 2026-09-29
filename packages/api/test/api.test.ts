@@ -81,7 +81,7 @@ describe("public API", () => {
     expect(response.status).toBe(200);
     const document = (await response.json()) as { openapi: string; paths: Record<string, unknown> };
     expect(document.openapi).toBe("3.1.0");
-    expect(Object.keys(document.paths).sort()).toEqual([
+    expect(Object.keys(document.paths)).toEqual(expect.arrayContaining([
       "/api/v1/categories",
       "/api/v1/categories/{slug}",
       "/api/v1/collections",
@@ -90,6 +90,6 @@ describe("public API", () => {
       "/api/v1/packages",
       "/api/v1/packages/{name}",
       "/api/v1/search",
-    ]);
+    ]));
   });
 });

@@ -8,7 +8,7 @@ export type SubmissionStatus = z.infer<typeof submissionStatusSchema>;
 
 /** Ask the marketplace to (re)index an npm package. Omitting `version` means "the current `latest` dist-tag". */
 export const submitPackageInputSchema = z.object({
-  packageName: packageNameSchema,
+  name: packageNameSchema,
   version: semverSchema.optional(),
 });
 export type SubmitPackageInput = z.infer<typeof submitPackageInputSchema>;

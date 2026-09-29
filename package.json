@@ -21,6 +21,7 @@
     "db:migrate:staging": "pnpm --filter @marketplace/web exec wrangler d1 migrations apply DB --remote --env staging",
     "db:migrate:production": "pnpm --filter @marketplace/web exec wrangler d1 migrations apply DB --remote --env production",
     "migrations:check": "node scripts/check-migrations.mjs",
+    "index:local": "tsx scripts/index-local.mjs",
     "verify": "pnpm lint && pnpm typecheck && pnpm test"
   },
   "devDependencies": {
@@ -34,6 +35,7 @@
     "drizzle-kit": "0.31.11",
     "eslint": "10.11.0",
     "globals": "17.12.0",
+    "tsx": "4.23.15",
     "typescript": "6.0.3",
     "typescript-eslint": "8.71.0",
     "vitest": "4.1.11",

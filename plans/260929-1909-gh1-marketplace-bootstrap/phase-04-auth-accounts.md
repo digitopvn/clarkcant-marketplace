@@ -1,6 +1,6 @@
 # Phase 04 — Auth, accounts, publishers (M2 + account lifecycle)
 
-Status: pending · Wave 2 (parallel with 02, 03) · Depends on 01.
+Status: completed (2026-09-29) · Wave 2 (parallel with 02, 03) · Depends on 01. Report: `plans/reports/fullstack-developer-260929-2015-phase-04-auth.md`.
 
 ## Owns (only these files)
 - `packages/auth/**` (new): per-request Better Auth factory (Drizzle adapter on D1), plugins, actor resolution,

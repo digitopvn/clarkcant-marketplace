@@ -1,0 +1,78 @@
+---
+import type { PackageInstall } from "@marketplace/contracts";
+
+interface Props {
+  install: PackageInstall;
+}
+
+const { install } = Astro.props;
+const coordinate = `${install.package}@${install.version}`;
+const rows = [
+  { id: "install-coordinate", label: "npm coordinate", value: coordinate },
+  { id: "install-integrity", label: "Integrity (sha512)", value: install.integrity },
+  { id: "install-cli", label: "Fetch the exact tarball", value: install.cliCommand },
+];
+---
+
+<section aria-labelledby="install-heading" class="rounded-card border border-line bg-card p-5 shadow-card">
+  <h2 id="install-heading" class="font-display text-2xl">Install</h2>
+  <p class="mt-1 text-sm text-muted">
+    ClarkCant installs this exact version from npm, checks the integrity below and asks before granting anything.
+  </p>
+  <a
+    href={install.openInClarkCant}
+    class="mt-4 inline-flex rounded-full bg-accent px-5 py-2.5 text-sm font-medium text-on-accent hover:opacity-90"
+  >
+    Open in ClarkCant
+  </a>
+  <p class="mt-1 text-xs text-faint">
+    Proposed <code class="font-mono">clarkcant://install</code> link; it works once ClarkCant registers the scheme.
+  </p>
+  <dl class="mt-4 grid gap-3">
+    {
+      rows.map((row) => (
+        <div class="grid gap-1">
+          <dt class="text-xs text-muted">{row.label}</dt>
+          <dd class="flex items-start gap-2">
+            <code id={row.id} class="min-w-0 flex-1 rounded-lg bg-raised px-3 py-2 font-mono text-xs break-all">
+              {row.value}
+            </code>
+            <button
+              type="button"
+              data-copy-target={row.id}
+              class="shrink-0 rounded-full border border-line px-3 py-1.5 text-xs hover:border-accent"
+            >
+              <span data-copy-label>Copy</span>
+              <span class="sr-only"> {row.label}</span>
+            </button>
+          </dd>
+        </div>
+      ))
+    }
+  </dl>
+  <p class="sr-only" role="status" aria-live="polite" data-copy-status></p>
+</section>
+
+<script>
+  // Progressive enhancement: without JavaScript (or clipboard access) the values stay selectable text.
+  for (const button of document.querySelectorAll<HTMLButtonElement>("[data-copy-target]")) {
+    button.addEventListener("click", async () => {
+      const target = document.getElementById(button.dataset.copyTarget ?? "");
+      const label = button.querySelector<HTMLElement>("[data-copy-label]");
+      const status = document.querySelector<HTMLElement>("[data-copy-status]");
+      if (!target || !label) return;
+      try {
+        await navigator.clipboard.writeText(target.textContent?.trim() ?? "");
+        label.textContent = "Copied";
+        if (status) status.textContent = "Copied to clipboard";
+        setTimeout(() => (label.textContent = "Copy"), 1500);
+      } catch {
+        const range = document.createRange();
+        range.selectNodeContents(target);
+        getSelection()?.removeAllRanges();
+        getSelection()?.addRange(range);
+        if (status) status.textContent = "Copy is unavailable; the text is selected instead";
+      }
+    });
+  }
+</script>

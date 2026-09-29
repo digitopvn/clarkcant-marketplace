@@ -2,6 +2,7 @@ import { OpenAPIHono } from "@hono/zod-openapi";
 
 import { handleError, handleNotFound, validationHook } from "./http/errors";
 import { requestId } from "./http/request-id";
+import { actorMiddleware } from "./middleware/actor";
 import { createAdminRouter } from "./routes/admin";
 import { createCatalogRouter } from "./routes/catalog";
 import { createHealthRouter } from "./routes/health";
@@ -32,6 +33,7 @@ export function createApi(options: CreateApiOptions) {
     c.set("context", await options.resolveContext(c.req.raw));
     await next();
   });
+  app.use(`${API_BASE_PATH}/*`, actorMiddleware(options));
 
   app.route(API_BASE_PATH, createHealthRouter());
   app.route(API_BASE_PATH, createPackagesRouter());

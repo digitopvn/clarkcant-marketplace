@@ -39,3 +39,23 @@ Status: pending · Wave 3 (parallel with 05) · Depends on 02, 03, 04.
 - Tests: sitemap/robots/llms contents, JSON-LD validity for each type, markdown twin equals renderMarkdown output,
   share adapters URL encoding, CSP header present, axe-core no serious violations on home/package/page routes.
 - `pnpm verify && pnpm build` green.
+
+## Added by controller after phase 04
+- `SiteHeader.astro`: add Sign in / Account links (session-aware via `Astro.locals.actor`) and an Admin link for admins.
+- docs/operations: staging/production admin bootstrap — admin requires a verified email; until an email sender exists, an
+  admin signs in with GitHub (when configured) or an operator marks `user.email_verified` via a documented
+  `wrangler d1 execute` command. Document required secrets: BETTER_AUTH_SECRET, ADMIN_EMAILS, optional GITHUB_CLIENT_ID/SECRET.
+
+## Added by controller after phase 03
+- Add a head slot/props to `BaseLayout` for canonical, alternate markdown, OG/Twitter, JSON-LD; wire `og:image` to the
+  package social card from R2. Social cards are SVG today — produce PNG (resvg-wasm in apps/jobs if it fits the Worker
+  size limit; otherwise document the limitation and keep the site default PNG card for og:image).
+- Home page: switch to `components/package/PackageCard.astro` (links to detail page) and delete the old
+  `components/PackageCard.astro`.
+- Docs: `index:local`, indexing pipeline, curation status meanings (A10 in plan.md), provenance recorded-not-verified.
+
+## Added by controller after phase 02
+- `SiteHeader.astro` overflows ~42px at 375px when signed in — fix responsive nav (menu/disclosure) and extend the e2e width check to the whole page.
+- PageDocument SEO fields are named `meta` and have no share-image field: add an optional `meta.image` (media id) to the
+  contract + editor SEO panel so page social cards/og:image can be set; default to generated/site card otherwise.
+- Legal pages are seeded through the page services (`ensureDefaultPages` pattern in packages/marketplace/src/pages).

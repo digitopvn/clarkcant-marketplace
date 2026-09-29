@@ -1,26 +1,34 @@
 ---
-import { isMarketplaceError, type SearchResult } from "@marketplace/contracts";
-import { listCategories, searchPackages } from "@marketplace/marketplace";
+import { isMarketplaceError, type Page, type PackageSummary } from "@marketplace/contracts";
+import { listCategories, listPackages } from "@marketplace/marketplace";
 
-import PackageCard from "../../components/PackageCard.astro";
-import PackageSearchForm from "../../components/PackageSearchForm.astro";
+import PackageFilters, { type PackageFilterValues } from "../../components/package/PackageFilters.astro";
+import PackageGrid from "../../components/package/PackageGrid.astro";
 import BaseLayout from "../../layouts/BaseLayout.astro";
 import { createRequestContext } from "../../server/request-context";
 
 export const prerender = false;
 
 const params = Astro.url.searchParams;
-const q = params.get("q") ?? "";
-const category = params.get("category") || undefined;
-const cursor = params.get("cursor") || undefined;
+const param = (key: string) => params.get(key) || undefined;
+const filters: PackageFilterValues = {
+  q: params.get("q") ?? "",
+  category: param("category"),
+  kind: param("kind"),
+  isolation: param("isolation"),
+  platform: param("platform"),
+  publisher: param("publisher"),
+  curation: param("curation"),
+};
+const cursor = param("cursor");
 
 const { deps } = createRequestContext();
 const categories = await listCategories(deps);
 
-let result: SearchResult | null = null;
+let result: Page<PackageSummary> | null = null;
 let invalidQuery = false;
 try {
-  result = await searchPackages(deps, { q, category, cursor });
+  result = await listPackages(deps, { ...filters, cursor });
 } catch (error) {
   // Malformed query-string input is a user error: show a message with a 400, never a 500.
   if (isMarketplaceError(error) && error.code === "validation_failed") {
@@ -33,93 +41,52 @@ try {
 
 function pageHref(nextCursor: string): string {
   const next = new URLSearchParams();
-  if (q) next.set("q", q);
-  if (category) next.set("category", category);
+  for (const [key, value] of Object.entries(filters)) if (value) next.set(key, value);
   next.set("cursor", nextCursor);
   return `/packages?${next.toString()}`;
 }
 
-const activeCategory = categories.find((c) => c.slug === category);
-const heading = q ? `Results for “${q}”` : activeCategory ? activeCategory.name : "All packages";
+const filtered = Object.entries(filters).some(([, value]) => Boolean(value));
+const activeCategory = categories.find((c) => c.slug === filters.category);
+const heading = filters.q ? `Results for “${filters.q}”` : activeCategory ? activeCategory.name : "All packages";
 ---
 
-<BaseLayout title={q ? `Search: ${q}` : "Packages"}>
+<BaseLayout title={filters.q ? `Search: ${filters.q}` : "Packages"}>
   <section class="container-page py-10">
     <h1 class="font-display text-4xl sm:text-5xl">{heading}</h1>
-    <div class="mt-6 max-w-xl">
-      <PackageSearchForm query={q} category={category} />
-    </div>
-
     {
-      categories.length > 0 && (
-        <nav aria-label="Categories" class="mt-6">
-          <ul class="flex flex-wrap gap-2 text-sm">
-            <li>
-              <a
-                href={q ? `/packages?q=${encodeURIComponent(q)}` : "/packages"}
-                aria-current={category ? undefined : "page"}
-                class="inline-flex rounded-full border border-line px-3 py-1.5 text-muted hover:text-ink aria-[current=page]:border-accent aria-[current=page]:text-ink"
-              >
-                All
-              </a>
-            </li>
-            {categories.map((c) => (
-              <li>
-                <a
-                  href={`/packages?${new URLSearchParams(q ? { q, category: c.slug } : { category: c.slug }).toString()}`}
-                  aria-current={c.slug === category ? "page" : undefined}
-                  class="inline-flex rounded-full border border-line px-3 py-1.5 text-muted hover:text-ink aria-[current=page]:border-accent aria-[current=page]:text-ink"
-                >
-                  {c.name}
-                </a>
-              </li>
-            ))}
-          </ul>
-        </nav>
+      filters.publisher && (
+        <p class="mt-2 text-sm text-muted">
+          Publisher <span class="font-mono">{filters.publisher}</span> ·{" "}
+          <a href="/packages" class="text-accent underline-offset-4 hover:underline">clear</a>
+        </p>
       )
     }
+    <div class="mt-6">
+      <PackageFilters values={filters} categories={categories} />
+    </div>
   </section>
 
   <section class="container-page pb-12" aria-live="polite">
     {
       invalidQuery && (
         <p role="alert" class="rounded-card border border-line bg-raised p-6 text-warning">
-          That search could not be understood. Check the search text or category and try again.
+          Those filters could not be understood. Check the search text and filters and try again.
         </p>
       )
     }
     {
-      result && result.items.length === 0 && (
-        <div class="rounded-card border border-dashed border-line bg-raised p-10 text-center">
-          <h2 class="font-display text-3xl">No packages found</h2>
-          <p class="mt-2 text-muted">
-            {q || category ? "Try a different search or category." : "Packages appear here once they are indexed and reviewed."}
-          </p>
-        </div>
-      )
-    }
-    {
-      result && result.items.length > 0 && (
-        <>
-          <ul class="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-            {result.items.map((pkg) => (
-              <li>
-                <PackageCard pkg={pkg} />
-              </li>
-            ))}
-          </ul>
-          {result.nextCursor && (
-            <div class="mt-8 flex justify-center">
-              <a
-                href={pageHref(result.nextCursor)}
-                rel="next"
-                class="rounded-full border border-line px-5 py-2.5 text-sm hover:border-accent"
-              >
-                More packages
-              </a>
-            </div>
-          )}
-        </>
+      result && (
+        <PackageGrid
+          items={result.items}
+          nextHref={result.nextCursor ? pageHref(result.nextCursor) : null}
+          emptyTitle="No packages found"
+          emptyMessage={
+            filtered
+              ? "Nothing matches these filters. Try a different search or fewer filters."
+              : "Packages appear here once they are published to npm with the clarkcant keyword and indexed."
+          }
+        />
       )
     }
   </section>

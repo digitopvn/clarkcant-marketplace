@@ -1,3 +1,5 @@
+export * from "./accounts";
+export * from "./actor";
 export * from "./audit";
 export * from "./env";
 export * from "./errors";
@@ -7,6 +9,7 @@ export * from "./manifest";
 export * from "./packages";
 export * from "./pages";
 export * from "./pagination";
+export * from "./publishers";
 export * from "./scopes";
 export * from "./search";
 export * from "./submissions";

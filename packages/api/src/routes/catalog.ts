@@ -4,6 +4,7 @@ import { getCategory, getCollection, listCategories, listCollections } from "@ma
 
 import { errorResponses } from "../http/errors";
 import { createRouter } from "../http/router";
+import { createCurationRouter } from "./curation";
 
 const slugParams = z.object({
   slug: slugSchema,
@@ -58,8 +59,10 @@ const getCollectionRoute = createRoute({
   },
 });
 
+/** Public catalog reads plus the curator commands that shape them (see `./curation`). */
 export function createCatalogRouter() {
   return createRouter()
+    .route("/", createCurationRouter())
     .openapi(listCategoriesRoute, async (c) => c.json({ items: await listCategories(c.var.context.deps) }, 200))
     .openapi(getCategoryRoute, async (c) =>
       c.json(await getCategory(c.var.context.deps, c.req.valid("param").slug), 200),

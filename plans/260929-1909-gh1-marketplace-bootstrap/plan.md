@@ -90,3 +90,9 @@ See `phase-*.md` files in this directory. Progress is tracked there.
 | 3 | [phase-05-agent-interfaces](phase-05-agent-interfaces.md) | OpenAPI completion, SDK, CLI, MCP, WebMCP | 2,3,4 |
 | 3 | [phase-06-seo-hardening-legal](phase-06-seo-hardening-legal.md) | Markdown twins, sitemaps, llms, JSON-LD, share UX, OG, security headers, rate limit, legal, docs | 2,3,4 |
 | 4 | phase-07 release (controller) | code review, UX/AX, staging+prod deploy, live verification | 5,6 |
+
+## Decisions during execution
+- A10 Indexed packages start as `listed` = "passed automated checks (manifest, integrity), not human-reviewed"; `featured`
+  is the curated signal; `hidden`/`rejected` are removed from public surfaces. UI + docs must state this plainly.
+- A11 Migration 0004 is Better Auth `rate_limit` (auth rate limiting stored in D1; no wrangler rate-limit binding used).
+- A12 Curation is exposed via API/MCP only in this bootstrap (no dedicated curation admin UI).

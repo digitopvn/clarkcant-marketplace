@@ -1,21 +1,11 @@
 import { z } from "zod";
 
-import { isolationClassSchema } from "./manifest";
-import { categorySlugSchema, packageSummarySchema } from "./packages";
-import { DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE } from "./pagination";
+import { MAX_PACKAGE_QUERY_LENGTH, packageFilterShape, packageSummarySchema } from "./packages";
 
-export const MAX_SEARCH_QUERY_LENGTH = 200;
+export const MAX_SEARCH_QUERY_LENGTH = MAX_PACKAGE_QUERY_LENGTH;
 
-export const searchQuerySchema = z.object({
-  /** Free text. Empty means "browse": results fall back to recency ordering. */
-  q: z.string().trim().max(MAX_SEARCH_QUERY_LENGTH).default(""),
-  category: categorySlugSchema.optional(),
-  /** Facet kind filter (e.g. `widget`, `tools`). */
-  kind: z.string().min(1).max(32).regex(/^[a-z-]+$/).optional(),
-  isolation: isolationClassSchema.optional(),
-  limit: z.coerce.number().int().min(1).max(MAX_PAGE_SIZE).default(DEFAULT_PAGE_SIZE),
-  cursor: z.string().min(1).max(200).optional(),
-});
+/** Free text (`q`) plus the shared package filters. An empty `q` browses: results fall back to recency ordering. */
+export const searchQuerySchema = z.object(packageFilterShape);
 export type SearchQuery = z.infer<typeof searchQuerySchema>;
 export type SearchQueryInput = z.input<typeof searchQuerySchema>;
 

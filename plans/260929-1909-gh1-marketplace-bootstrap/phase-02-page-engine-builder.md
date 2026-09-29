@@ -1,6 +1,6 @@
 # Phase 02 — Page engine + admin builder (M1)
 
-Status: pending · Wave 2 (parallel with 03, 04) · Depends on 01.
+Status: completed (2026-09-29) · Wave 2 (parallel with 03, 04) · Depends on 01.
 
 ## Owns (only these files)
 - `packages/page-engine/**` (new): block registry, blocks, layouts, HTML + Markdown renderers,

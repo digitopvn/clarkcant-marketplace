@@ -13,7 +13,7 @@ const APPLY_MIGRATIONS = path.resolve(import.meta.dirname, "test/d1/apply-migrat
  * Vitest project that runs inside workerd with a real local D1 (`env.DB`) and the committed migrations applied
  * before each test file. Used by every package whose tests touch the database, so none of them mock it.
  */
-export function d1TestProject(name: string) {
+export function d1TestProject(name: string, extra: { globalSetup?: string[] } = {}) {
   return defineConfig({
     plugins: [
       cloudflareTest(async () => ({
@@ -21,6 +21,7 @@ export function d1TestProject(name: string) {
           compatibilityDate: COMPATIBILITY_DATE,
           compatibilityFlags: ["nodejs_compat"],
           d1Databases: ["DB"],
+          r2Buckets: ["MEDIA"],
           bindings: { TEST_MIGRATIONS: await readD1Migrations(MIGRATIONS_DIR) },
         },
       })),
@@ -29,6 +30,7 @@ export function d1TestProject(name: string) {
       name,
       include: ["test/**/*.test.ts"],
       setupFiles: [APPLY_MIGRATIONS],
+      ...(extra.globalSetup ? { globalSetup: extra.globalSetup } : {}),
     },
   });
 }

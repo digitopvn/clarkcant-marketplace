@@ -1,10 +1,24 @@
-import { searchQuerySchema, type SearchQueryInput, type SearchResult } from "@marketplace/contracts";
+import {
+  searchQuerySchema,
+  type Page,
+  type PackageSort,
+  type PackageSummary,
+  type SearchQuery,
+  type SearchQueryInput,
+  type SearchResult,
+} from "@marketplace/contracts";
 import { packageFacets, packageVersions, packages, packagesFts, publishers } from "@marketplace/db";
 import { and, asc, eq, exists, sql, type SQL } from "drizzle-orm";
 
 import type { MarketplaceDeps } from "../deps";
-import { latestFirst, offsetFromCursor, toPage } from "../packages/package-queries";
-import { isPubliclyVisible, packageSummaryColumns, toPackageSummary } from "../packages/package-rows";
+import {
+  isPubliclyVisible,
+  latestFirst,
+  offsetFromCursor,
+  packageSummaryColumns,
+  toPackageSummary,
+  toPage,
+} from "../packages/package-rows";
 import { parseInput } from "../validation";
 
 const MAX_TERMS = 8;
@@ -26,17 +40,24 @@ export function toFtsQuery(text: string): string | null {
 }
 
 /**
- * Searches public listings. An empty or punctuation-only query browses by recency, so the same endpoint backs both
- * the search box and filtered browsing.
+ * The one query behind `GET /packages`, `GET /search` and the web listing pages: public visibility, the shared
+ * filters, optional full-text match and a sort. Without an explicit sort, a text query ranks by relevance and an
+ * empty one browses newest first.
  */
-export async function searchPackages(deps: MarketplaceDeps, input: SearchQueryInput = {}): Promise<SearchResult> {
-  const query = parseInput(searchQuerySchema, input);
+export async function findPackages(
+  deps: MarketplaceDeps,
+  query: SearchQuery,
+  sort: PackageSort | undefined,
+): Promise<Page<PackageSummary>> {
   const offset = offsetFromCursor(query.cursor);
   const match = toFtsQuery(query.q);
 
   const filters: SQL[] = [isPubliclyVisible()];
   if (query.category) filters.push(eq(packages.categorySlug, query.category));
+  if (query.curation) filters.push(eq(packages.curationStatus, query.curation));
+  if (query.publisher) filters.push(eq(publishers.slug, query.publisher));
   if (query.kind || query.isolation) filters.push(latestVersionHasFacet(deps, query.kind, query.isolation));
+  if (query.platform) filters.push(latestVersionSupportsPlatform(query.platform));
 
   const base = deps.db
     .select(packageSummaryColumns)
@@ -44,20 +65,30 @@ export async function searchPackages(deps: MarketplaceDeps, input: SearchQueryIn
     .leftJoin(publishers, eq(publishers.id, packages.publisherId))
     .$dynamic();
 
+  const order = sort === "name" ? [asc(packages.name)] : sort === "latest" || !match ? latestFirst : [RANK, asc(packages.name)];
   const rows = match
     ? await base
         .innerJoin(packagesFts, eq(packagesFts.packageId, packages.id))
         .where(and(sql`packages_fts match ${match}`, ...filters))
-        .orderBy(RANK, asc(packages.name))
+        .orderBy(...order)
         .limit(query.limit + 1)
         .offset(offset)
     : await base
         .where(and(...filters))
-        .orderBy(...latestFirst)
+        .orderBy(...order)
         .limit(query.limit + 1)
         .offset(offset);
 
-  const page = toPage(rows.map(toPackageSummary), query.limit, offset);
+  return toPage(rows.map(toPackageSummary), query.limit, offset);
+}
+
+/**
+ * Searches public listings. An empty or punctuation-only query browses by recency, so the same endpoint backs both
+ * the search box and filtered browsing.
+ */
+export async function searchPackages(deps: MarketplaceDeps, input: SearchQueryInput = {}): Promise<SearchResult> {
+  const query = parseInput(searchQuerySchema, input);
+  const page = await findPackages(deps, query, undefined);
   return { query: query.q, items: page.items, nextCursor: page.nextCursor };
 }
 
@@ -75,4 +106,10 @@ function latestVersionHasFacet(deps: MarketplaceDeps, kind: string | undefined, 
       .innerJoin(packageVersions, eq(packageVersions.id, packageFacets.packageVersionId))
       .where(and(...conditions)),
   );
+}
+
+/** Platforms live only in the immutable manifest JSON, so the filter reads them with SQLite's `json_each`. */
+function latestVersionSupportsPlatform(platform: string): SQL {
+  return sql`exists (select 1 from package_versions pv, json_each(pv.manifest, '$.platforms') platform
+    where pv.package_id = ${packages.id} and pv.version = ${packages.latestVersion} and platform.value = ${platform})`;
 }

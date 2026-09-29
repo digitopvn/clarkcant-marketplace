@@ -1,0 +1,18 @@
+---
+import AccountPanel from "../../components/auth/AccountPanel";
+import BaseLayout from "../../layouts/BaseLayout.astro";
+
+export const prerender = false;
+
+// Account management needs a browser session; API tokens and OAuth access tokens are for the API, not these pages.
+if (Astro.locals.actor.type !== "user") return Astro.redirect("/login?next=%2Faccount", 302);
+---
+
+<BaseLayout title="Your account">
+  <div class="container-page max-w-3xl py-12">
+    <h1 class="font-display text-4xl">Your account</h1>
+    <div class="mt-8">
+      <AccountPanel client:load />
+    </div>
+  </div>
+</BaseLayout>

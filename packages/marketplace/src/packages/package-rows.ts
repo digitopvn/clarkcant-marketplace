@@ -1,6 +1,14 @@
-import { PUBLIC_CURATION_STATUSES, type CurationStatus, type PackageSummary } from "@marketplace/contracts";
+import {
+  MarketplaceError,
+  PUBLIC_CURATION_STATUSES,
+  decodeOffsetCursor,
+  encodeOffsetCursor,
+  type CurationStatus,
+  type Page,
+  type PackageSummary,
+} from "@marketplace/contracts";
 import { packages, publishers } from "@marketplace/db";
-import { inArray } from "drizzle-orm";
+import { asc, desc, inArray, sql } from "drizzle-orm";
 
 /** Columns every package listing selects, so all read paths produce identical summaries. */
 export const packageSummaryColumns = {
@@ -54,4 +62,20 @@ export function toPackageSummary(row: PackageSummaryRow): PackageSummary {
     indexedAt: row.indexedAt?.toISOString() ?? null,
     updatedAt: row.updatedAt.toISOString(),
   };
+}
+
+/** Newest indexed first; never-indexed rows last; name as a stable tie-breaker. */
+export const latestFirst = [sql`${packages.indexedAt} is null`, desc(packages.indexedAt), asc(packages.name)];
+
+/** Resolves a page cursor or rejects it; a silently reset cursor would make clients loop forever. */
+export function offsetFromCursor(cursor: string | undefined): number {
+  const offset = decodeOffsetCursor(cursor);
+  if (offset === null) throw new MarketplaceError("validation_failed", "cursor is malformed", { details: { cursor } });
+  return offset;
+}
+
+/** Fetches `limit + 1` rows so the next cursor is only issued when another page really exists. */
+export function toPage<T>(rows: T[], limit: number, offset: number): Page<T> {
+  const hasMore = rows.length > limit;
+  return { items: hasMore ? rows.slice(0, limit) : rows, nextCursor: hasMore ? encodeOffsetCursor(offset + limit) : null };
 }

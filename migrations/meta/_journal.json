@@ -29,6 +29,13 @@
       "when": 1790687271073,
       "tag": "0003_package_versions_immutable",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1790688780003,
+      "tag": "0004_auth_rate_limit",
+      "breakpoints": true
     }
   ]
 }

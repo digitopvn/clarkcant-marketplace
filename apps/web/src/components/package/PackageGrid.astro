@@ -1,0 +1,41 @@
+---
+import type { PackageSummary } from "@marketplace/contracts";
+
+import PackageCard from "./PackageCard.astro";
+
+interface Props {
+  items: PackageSummary[];
+  /** Link to the next page, when there is one. */
+  nextHref?: string | null;
+  emptyTitle?: string;
+  emptyMessage: string;
+}
+
+const { items, nextHref = null, emptyTitle = "No packages yet", emptyMessage } = Astro.props;
+---
+
+{
+  items.length === 0 ? (
+    <div class="rounded-card border border-dashed border-line bg-raised p-10 text-center">
+      <h2 class="font-display text-3xl">{emptyTitle}</h2>
+      <p class="mt-2 text-muted">{emptyMessage}</p>
+    </div>
+  ) : (
+    <>
+      <ul class="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+        {items.map((pkg) => (
+          <li>
+            <PackageCard pkg={pkg} />
+          </li>
+        ))}
+      </ul>
+      {nextHref && (
+        <div class="mt-8 flex justify-center">
+          <a href={nextHref} rel="next" class="rounded-full border border-line px-5 py-2.5 text-sm hover:border-accent">
+            More packages
+          </a>
+        </div>
+      )}
+    </>
+  )
+}

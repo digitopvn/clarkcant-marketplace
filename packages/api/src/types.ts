@@ -1,4 +1,5 @@
-import type { RuntimeVars } from "@marketplace/contracts";
+import type { AuthRuntime } from "@marketplace/auth";
+import type { Actor, RuntimeVars } from "@marketplace/contracts";
 import type { MarketplaceDeps } from "@marketplace/marketplace";
 
 /** What every `/api/v1/*` handler can reach: application services' deps plus validated runtime vars. */
@@ -14,6 +15,8 @@ export interface ApiRequestContext {
 export interface ApiVariables {
   requestId: string;
   context: ApiRequestContext;
+  /** Resolved by the actor middleware for every `/api/v1/*` request; `ANONYMOUS_ACTOR` when no credential is sent. */
+  actor: Actor;
 }
 
 export interface ApiEnv {
@@ -27,6 +30,11 @@ export interface CreateApiOptions {
    * that code rather than a crash.
    */
   resolveContext(request: Request): ApiRequestContext | Promise<ApiRequestContext>;
+  /**
+   * Builds the per-request auth runtime (Better Auth + admin policy) used to resolve `c.var.actor`. Called only
+   * for requests that carry a credential. Hosts without auth omit it, and every caller is then anonymous.
+   */
+  resolveAuth?(request: Request, context: ApiRequestContext): AuthRuntime | Promise<AuthRuntime>;
   /** Reported in the OpenAPI document. */
   version?: string;
 }

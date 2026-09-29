@@ -39,3 +39,10 @@ Status: pending · Wave 3 (parallel with 06) · Depends on 02, 03, 04.
   call each read tool on valid/invalid input via an in-process MCP client; WebMCP registration unit test with a fake
   `document.modelContext` (browser API absent in test runtime — this is a test double of the browser API, not of our code).
 - `pnpm verify && pnpm build` green.
+
+## Added by controller after phase 04
+- Mount root-path OAuth discovery for MCP clients: `/.well-known/oauth-authorization-server`, `/.well-known/openid-configuration`
+  and `/.well-known/oauth-protected-resource` (resource = `<site>/mcp`), delegating to Better Auth's `/api/auth/.well-known/*`
+  handlers (see plans/reports/fullstack-developer-260929-2015-phase-04-auth.md). The MCP endpoint returns 401 with
+  `WWW-Authenticate: Bearer resource_metadata=…` for admin-only tool calls without a token.
+- OpenAPI tag descriptions for `publish` and `curation` in packages/api/src/app.ts.

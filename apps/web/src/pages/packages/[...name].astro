@@ -1,0 +1,175 @@
+---
+import { isMarketplaceError, type PackageDetail, type PackageInstall, type PackageVersionSummary } from "@marketplace/contracts";
+import { getPackage, getPackageInstall, listPackageVersions } from "@marketplace/marketplace";
+
+import InstallPanel from "../../components/package/InstallPanel.astro";
+import PackageReadme from "../../components/package/PackageReadme.astro";
+import PermissionsPanel from "../../components/package/PermissionsPanel.astro";
+import SecurityFacts from "../../components/package/SecurityFacts.astro";
+import { platformLabel } from "../../components/package/package-labels";
+import BaseLayout from "../../layouts/BaseLayout.astro";
+import { createRequestContext } from "../../server/request-context";
+
+export const prerender = false;
+
+const { deps } = createRequestContext();
+const name = Astro.params.name ?? "";
+
+let pkg: PackageDetail | null = null;
+let install: PackageInstall | null = null;
+let versions: PackageVersionSummary[] = [];
+try {
+  pkg = await getPackage(deps, name);
+  versions = await listPackageVersions(deps, name);
+  install = pkg.latestVersion ? await getPackageInstall(deps, name) : null;
+} catch (error) {
+  // An unknown, hidden or malformed name is a 404 page; anything else is a real failure.
+  if (!isMarketplaceError(error) || (error.code !== "not_found" && error.code !== "validation_failed")) throw error;
+  Astro.response.status = 404;
+}
+
+const latest = pkg?.latest ?? null;
+const images = latest?.previews.filter((preview) => preview.kind === "image") ?? [];
+const socialCard = latest?.previews.find((preview) => preview.kind === "social_card") ?? null;
+const dateFormat = new Intl.DateTimeFormat("en", { dateStyle: "medium", timeZone: "UTC" });
+const npmUrl = pkg ? `https://www.npmjs.com/package/${pkg.name}` : "";
+---
+
+{
+  !pkg ? (
+    <BaseLayout title="Package not found">
+      <section class="container-page py-16">
+        <h1 class="font-display text-4xl">Package not found</h1>
+        <p class="mt-3 max-w-xl text-muted">
+          No listed package is called <code class="font-mono break-all">{name}</code>. It may not be indexed yet, or a
+          curator may have hidden it.
+        </p>
+        <a href="/packages" class="mt-6 inline-flex rounded-full border border-line px-5 py-2.5 text-sm hover:border-accent">
+          Browse packages
+        </a>
+      </section>
+    </BaseLayout>
+  ) : (
+    <BaseLayout title={pkg.displayName} description={pkg.description || `${pkg.name} on the ClarkCant Marketplace`}>
+      <article class="container-page py-10">
+        <header class="grid gap-3">
+          <nav aria-label="Breadcrumb" class="text-sm text-muted">
+            <a href="/packages" class="hover:text-ink">Packages</a>
+            {pkg.categorySlug && (
+              <>
+                {" / "}
+                <a href={`/categories/${pkg.categorySlug}`} class="hover:text-ink">
+                  {pkg.categorySlug}
+                </a>
+              </>
+            )}
+          </nav>
+          <div class="flex flex-wrap items-center gap-3">
+            <h1 class="font-display text-4xl sm:text-5xl">{pkg.displayName}</h1>
+            {pkg.curationStatus === "featured" && (
+              <span class="rounded-full bg-accent-soft px-2.5 py-0.5 text-xs text-accent">Featured</span>
+            )}
+          </div>
+          <p class="font-mono text-sm text-faint break-all">
+            {pkg.name}
+            {pkg.latestVersion && <span> · v{pkg.latestVersion}</span>}
+          </p>
+          {pkg.description && <p class="max-w-2xl text-lg text-muted">{pkg.description}</p>}
+          <ul class="flex flex-wrap gap-x-5 gap-y-1 text-sm text-muted">
+            <li>
+              {pkg.publisher ? pkg.publisher.name : "Unclaimed publisher"}
+              {pkg.publisher?.verified && <span class="text-success"> · verified</span>}
+            </li>
+            {pkg.license && <li>{pkg.license} license</li>}
+            <li>
+              <a href={npmUrl} rel="noopener" class="text-accent underline-offset-4 hover:underline">npm</a>
+            </li>
+            {pkg.repositoryUrl && (
+              <li>
+                <a href={pkg.repositoryUrl} rel="noopener nofollow ugc" class="text-accent underline-offset-4 hover:underline">
+                  Source
+                </a>
+              </li>
+            )}
+          </ul>
+        </header>
+
+        {
+          !latest ? (
+            <p class="mt-8 rounded-card border border-dashed border-line bg-raised p-6 text-muted">
+              This package has no indexed version yet.
+            </p>
+          ) : (
+            <div class="mt-8 grid gap-8 lg:grid-cols-[minmax(0,1fr)_22rem]">
+              <div class="grid min-w-0 content-start gap-8">
+                {images.length > 0 && (
+                  <section aria-label="Previews" class="grid gap-3 sm:grid-cols-2">
+                    {images.map((image) => (
+                      <img
+                        src={image.url}
+                        alt={image.alt}
+                        width={image.width ?? undefined}
+                        height={image.height ?? undefined}
+                        loading="lazy"
+                        decoding="async"
+                        class="h-auto w-full rounded-card border border-line bg-raised"
+                      />
+                    ))}
+                  </section>
+                )}
+                <PackageReadme html={latest.readmeHtml} />
+              </div>
+
+              <aside class="grid content-start gap-5">
+                {install && <InstallPanel install={install} />}
+                <PermissionsPanel version={latest} />
+                <section aria-labelledby="facets-heading" class="rounded-card border border-line bg-card p-5 shadow-card">
+                  <h2 id="facets-heading" class="font-display text-2xl">Facets and platforms</h2>
+                  <ul class="mt-3 grid gap-2 text-sm">
+                    {latest.facets.map((facet) => (
+                      <li class="grid">
+                        <span class="font-medium">{facet.kind}</span>
+                        <span class="font-mono text-xs text-muted break-all">{facet.widgetId ?? facet.entry}</span>
+                      </li>
+                    ))}
+                  </ul>
+                  {latest.platforms.length > 0 ? (
+                    <ul class="mt-4 flex flex-wrap gap-2 text-xs">
+                      {latest.platforms.map((platform) => (
+                        <li class="rounded-full border border-line px-2.5 py-0.5 text-muted">{platformLabel(platform)}</li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p class="mt-4 text-xs text-muted">No platforms declared.</p>
+                  )}
+                </section>
+                <SecurityFacts version={latest} />
+                <section aria-labelledby="versions-heading" class="rounded-card border border-line bg-card p-5 shadow-card">
+                  <h2 id="versions-heading" class="font-display text-2xl">Versions</h2>
+                  <ul class="mt-3 grid gap-2 text-sm">
+                    {versions.map((version) => (
+                      <li class="flex items-center justify-between gap-2">
+                        <span class="font-mono">
+                          {version.version}
+                          {version.version === pkg.latestVersion && <span class="text-xs text-accent"> latest</span>}
+                        </span>
+                        <time datetime={version.publishedAt} class="text-xs text-muted">
+                          {dateFormat.format(new Date(version.publishedAt))}
+                        </time>
+                      </li>
+                    ))}
+                  </ul>
+                </section>
+                {socialCard && (
+                  <a href={socialCard.url} class="text-xs text-muted underline-offset-4 hover:underline">
+                    Share card image
+                  </a>
+                )}
+              </aside>
+            </div>
+          )
+        }
+      </article>
+    </BaseLayout>
+  )
+}

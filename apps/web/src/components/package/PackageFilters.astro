@@ -1,0 +1,76 @@
+---
+import type { Category } from "@marketplace/contracts";
+
+import { ISOLATION_OPTIONS, KIND_OPTIONS, PLATFORM_OPTIONS } from "./package-labels";
+
+export interface PackageFilterValues {
+  q: string;
+  category?: string | undefined;
+  kind?: string | undefined;
+  isolation?: string | undefined;
+  platform?: string | undefined;
+  publisher?: string | undefined;
+  curation?: string | undefined;
+}
+
+interface Props {
+  values: PackageFilterValues;
+  categories: Category[];
+}
+
+const { values, categories } = Astro.props;
+const selectClass =
+  "w-full rounded-full border border-line bg-card px-3 py-2 text-sm text-ink focus:border-accent focus:outline-none";
+const selects = [
+  { name: "category", label: "Category", options: categories.map((c) => ({ value: c.slug, label: c.name })) },
+  { name: "kind", label: "Facet", options: KIND_OPTIONS },
+  { name: "isolation", label: "Isolation", options: ISOLATION_OPTIONS },
+  { name: "platform", label: "Platform", options: PLATFORM_OPTIONS },
+  {
+    name: "curation",
+    label: "Curation",
+    options: [
+      { value: "featured", label: "Featured" },
+      { value: "listed", label: "Listed" },
+    ],
+  },
+] as const;
+const current: Record<string, string | undefined> = { ...values };
+---
+
+<form action="/packages" method="get" role="search" class="grid gap-3">
+  <div class="flex gap-2">
+    <label for="package-search" class="sr-only">Search packages</label>
+    <input
+      id="package-search"
+      type="search"
+      name="q"
+      value={values.q}
+      maxlength={200}
+      placeholder="Search widgets, tools, themes"
+      class="min-w-0 flex-1 rounded-full border border-line bg-card px-4 py-2.5 text-ink placeholder:text-faint focus:border-accent focus:outline-none"
+    />
+    <button type="submit" class="rounded-full bg-accent px-5 py-2.5 text-sm font-medium text-on-accent hover:opacity-90">
+      Search
+    </button>
+  </div>
+  <fieldset class="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+    <legend class="sr-only">Filters</legend>
+    {
+      selects.map((select) => (
+        <label class="grid gap-1 text-xs text-muted">
+          {select.label}
+          <select name={select.name} class={selectClass}>
+            <option value="">Any</option>
+            {select.options.map((option) => (
+              <option value={option.value} selected={current[select.name] === option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </label>
+      ))
+    }
+  </fieldset>
+  {values.publisher && <input type="hidden" name="publisher" value={values.publisher} />}
+</form>

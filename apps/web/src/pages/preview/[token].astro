@@ -1,0 +1,60 @@
+---
+import { isMarketplaceError } from "@marketplace/contracts";
+import { assertPreviewSecret, pagePath, renderPageDocument, resolvePreview, type ResolvedPreview } from "@marketplace/marketplace";
+import { env } from "cloudflare:workers";
+
+import RenderedPage from "../../components/page-engine/RenderedPage.astro";
+import BaseLayout from "../../layouts/BaseLayout.astro";
+import { createRequestContext } from "../../server/request-context";
+
+export const prerender = false;
+
+/*
+ * Signed draft previews. The token is the credential (HMAC over page, revision and expiry, keyed by
+ * BETTER_AUTH_SECRET), so anyone holding an unexpired link may view that one revision; nothing else is reachable.
+ * Previews are never indexed, cached or leaked through the Referer header.
+ */
+Astro.response.headers.set("X-Robots-Tag", "noindex, nofollow");
+Astro.response.headers.set("Cache-Control", "private, no-store");
+Astro.response.headers.set("Referrer-Policy", "no-referrer");
+
+const token = Astro.params.token ?? "";
+const configured = (env as unknown as Record<string, unknown>).BETTER_AUTH_SECRET;
+const secret = assertPreviewSecret(typeof configured === "string" ? configured : undefined);
+const { deps, vars } = createRequestContext();
+
+let preview: ResolvedPreview | null = null;
+try {
+  preview = await resolvePreview(deps, token, { secret });
+} catch (error) {
+  if (!isMarketplaceError(error) || error.code !== "not_found") throw error;
+}
+
+const rendered = preview
+  ? await renderPageDocument(deps, preview.document, { mode: "preview", siteUrl: vars.PUBLIC_SITE_URL, path: pagePath(preview.page.slug) })
+  : null;
+if (!preview) Astro.response.status = 404;
+
+const expires = preview ? new Date(preview.expiresAt).toISOString().replace("T", " ").slice(0, 16) + " UTC" : "";
+---
+
+{
+  preview && rendered ? (
+    <BaseLayout title={`Preview: ${preview.document.meta.title}`}>
+      <div class="border-b border-line bg-accent-soft" role="note" aria-label="Preview notice">
+        <p class="container-page py-2 text-sm">
+          <strong>Preview</strong> of revision {preview.revision.number} of <code class="font-mono">{pagePath(preview.page.slug)}</code>
+          {preview.revision.isPublished ? " (currently live)" : " (not published)"}. This link expires {expires}.
+        </p>
+      </div>
+      <RenderedPage html={rendered.html} structuredData={[]} />
+    </BaseLayout>
+  ) : (
+    <BaseLayout title="Preview unavailable">
+      <section class="container-page py-20">
+        <h1 class="font-display text-5xl">This preview link is invalid or has expired</h1>
+        <p class="mt-4 max-w-xl text-muted">Ask an editor for a new link, or open the page from the admin builder.</p>
+      </section>
+    </BaseLayout>
+  )
+}

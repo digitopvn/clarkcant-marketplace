@@ -1,57 +1,47 @@
 import {
   MarketplaceError,
-  decodeOffsetCursor,
-  encodeOffsetCursor,
   listPackagesQuerySchema,
   packageNameSchema,
+  semverSchema,
   type ListPackagesQueryInput,
   type Page,
   type PackageDetail,
+  type PackageInstall,
   type PackageSummary,
+  type PackageVersionSummary,
 } from "@marketplace/contracts";
-import { packageFacets, packagePermissions, packageVersions, packages, publishers } from "@marketplace/db";
-import { and, asc, desc, eq, sql, type SQL } from "drizzle-orm";
+import {
+  media,
+  packageAudits,
+  packageFacets,
+  packagePermissions,
+  packagePreviews,
+  packageVersions,
+  packages,
+  publishers,
+} from "@marketplace/db";
+import { mediaUrlFor } from "@marketplace/media";
+import { and, asc, desc, eq } from "drizzle-orm";
 
 import type { MarketplaceDeps } from "../deps";
+import { findPackages } from "../search/search-packages";
 import { parseInput } from "../validation";
-import { isPubliclyVisible, packageSummaryColumns, toPackageSummary } from "./package-rows";
+import { isPubliclyVisible, latestFirst, packageSummaryColumns, toPackageSummary } from "./package-rows";
+
+export { latestFirst, offsetFromCursor, toPage } from "./package-rows";
 
 const MAX_VERSIONS_LISTED = 50;
 
-/** Resolves a page cursor or rejects it; a silently reset cursor would make clients loop forever. */
-export function offsetFromCursor(cursor: string | undefined): number {
-  const offset = decodeOffsetCursor(cursor);
-  if (offset === null) throw new MarketplaceError("validation_failed", "cursor is malformed", { details: { cursor } });
-  return offset;
-}
-
-/** Fetches `limit + 1` rows so the next cursor is only issued when another page really exists. */
-export function toPage<T>(rows: T[], limit: number, offset: number): Page<T> {
-  const hasMore = rows.length > limit;
-  return { items: hasMore ? rows.slice(0, limit) : rows, nextCursor: hasMore ? encodeOffsetCursor(offset + limit) : null };
-}
-
-export const latestFirst = [sql`${packages.indexedAt} is null`, desc(packages.indexedAt), asc(packages.name)];
-
+/**
+ * Public package listing with the shared filters (`q`, category, facet kind, isolation, platform, publisher…).
+ * Accepts raw query-string values too: everything is validated against `listPackagesQuerySchema` here.
+ */
 export async function listPackages(
   deps: MarketplaceDeps,
-  input: ListPackagesQueryInput = {},
+  input: ListPackagesQueryInput | Record<string, string | undefined> = {},
 ): Promise<Page<PackageSummary>> {
-  const query = parseInput(listPackagesQuerySchema, input);
-  const offset = offsetFromCursor(query.cursor);
-  const filters: SQL[] = [isPubliclyVisible()];
-  if (query.category) filters.push(eq(packages.categorySlug, query.category));
-
-  const rows = await deps.db
-    .select(packageSummaryColumns)
-    .from(packages)
-    .leftJoin(publishers, eq(publishers.id, packages.publisherId))
-    .where(and(...filters))
-    .orderBy(...(query.sort === "name" ? [asc(packages.name)] : latestFirst))
-    .limit(query.limit + 1)
-    .offset(offset);
-
-  return toPage(rows.map(toPackageSummary), query.limit, offset);
+  const { sort, ...query } = parseInput(listPackagesQuerySchema, input);
+  return findPackages(deps, query, sort);
 }
 
 export async function listFeaturedPackages(deps: MarketplaceDeps, limit = 6): Promise<PackageSummary[]> {
@@ -76,8 +66,7 @@ export async function listLatestPackages(deps: MarketplaceDeps, limit = 12): Pro
   return rows.map(toPackageSummary);
 }
 
-/** Full public detail for one package. Hidden, rejected and unreviewed packages are indistinguishable from absent. */
-export async function getPackage(deps: MarketplaceDeps, rawName: unknown): Promise<PackageDetail> {
+async function findPublicPackage(deps: MarketplaceDeps, rawName: unknown) {
   const name = parseInput(packageNameSchema, rawName);
   const [row] = await deps.db
     .select({
@@ -91,13 +80,14 @@ export async function getPackage(deps: MarketplaceDeps, rawName: unknown): Promi
     .where(and(eq(packages.name, name), isPubliclyVisible()))
     .limit(1);
   if (!row) throw new MarketplaceError("not_found", `package "${name}" was not found`);
+  return row;
+}
 
+/** Full public detail for one package. Hidden, rejected and unreviewed packages are indistinguishable from absent. */
+export async function getPackage(deps: MarketplaceDeps, rawName: unknown): Promise<PackageDetail> {
+  const row = await findPublicPackage(deps, rawName);
   const versions = await deps.db
-    .select({
-      id: packageVersions.id,
-      version: packageVersions.version,
-      publishedAt: packageVersions.publishedAt,
-    })
+    .select({ version: packageVersions.version, publishedAt: packageVersions.publishedAt })
     .from(packageVersions)
     .where(eq(packageVersions.packageId, row.id))
     .orderBy(desc(packageVersions.publishedAt))
@@ -113,6 +103,68 @@ export async function getPackage(deps: MarketplaceDeps, rawName: unknown): Promi
   };
 }
 
+/** Every indexed version of a public package, newest first, with its integrity and provenance facts. */
+export async function listPackageVersions(deps: MarketplaceDeps, rawName: unknown): Promise<PackageVersionSummary[]> {
+  const row = await findPublicPackage(deps, rawName);
+  const versions = await deps.db
+    .select()
+    .from(packageVersions)
+    .where(eq(packageVersions.packageId, row.id))
+    .orderBy(desc(packageVersions.publishedAt), desc(packageVersions.version));
+  return versions.map((version) => ({
+    version: version.version,
+    publishedAt: version.publishedAt.toISOString(),
+    indexedAt: version.indexedAt.toISOString(),
+    npmIntegrity: version.npmIntegrity,
+    tarballSha512Verified: version.tarballSha512Verified,
+    hasProvenance: version.provenance !== null && version.provenance !== undefined,
+  }));
+}
+
+/**
+ * PROPOSED ClarkCant deep link. ClarkCant registers no URL scheme yet; this is the shape the marketplace emits and
+ * documents so the runtime can adopt it: `clarkcant://install?source=npm&package=<name>&version=<exact>`.
+ */
+export function openInClarkCantUrl(name: string, version: string): string {
+  const params = new URLSearchParams({ source: "npm", package: name, version });
+  return `clarkcant://install?${params.toString()}`;
+}
+
+/**
+ * The install coordinate for a public package: one exact version (the latest unless `version` is given), its npm
+ * integrity, the proposed deep link and a copyable command. ClarkCant must re-verify the integrity itself; nothing
+ * here grants permissions.
+ */
+export async function getPackageInstall(
+  deps: MarketplaceDeps,
+  rawName: unknown,
+  rawVersion?: unknown,
+): Promise<PackageInstall> {
+  const row = await findPublicPackage(deps, rawName);
+  const version = rawVersion === undefined ? row.latestVersion : parseInput(semverSchema, rawVersion);
+  if (!version) throw new MarketplaceError("not_found", `package "${row.name}" has no indexed version`);
+  const [found] = await deps.db
+    .select({ npmIntegrity: packageVersions.npmIntegrity })
+    .from(packageVersions)
+    .where(and(eq(packageVersions.packageId, row.id), eq(packageVersions.version, version)))
+    .limit(1);
+  if (!found) throw new MarketplaceError("not_found", `version ${version} of "${row.name}" is not indexed`);
+  return {
+    package: row.name,
+    version,
+    source: "npm",
+    integrity: found.npmIntegrity,
+    openInClarkCant: openInClarkCantUrl(row.name, version),
+    cliCommand: `npm pack ${row.name}@${version}`,
+  };
+}
+
+function platformsOf(manifest: unknown): string[] {
+  if (typeof manifest !== "object" || manifest === null) return [];
+  const platforms = (manifest as { platforms?: unknown }).platforms;
+  return Array.isArray(platforms) ? platforms.filter((entry): entry is string => typeof entry === "string") : [];
+}
+
 async function getVersionDetail(
   deps: MarketplaceDeps,
   packageId: string,
@@ -125,7 +177,7 @@ async function getVersionDetail(
     .limit(1);
   if (!row) return null;
 
-  const [facets, permissions] = await Promise.all([
+  const [facets, permissions, previews, checks] = await Promise.all([
     deps.db
       .select({
         kind: packageFacets.kind,
@@ -142,6 +194,24 @@ async function getVersionDetail(
       .from(packagePermissions)
       .where(eq(packagePermissions.packageVersionId, row.id))
       .orderBy(asc(packagePermissions.kind), asc(packagePermissions.value)),
+    deps.db
+      .select({
+        kind: packagePreviews.kind,
+        alt: packagePreviews.alt,
+        r2Key: media.r2Key,
+        contentType: media.contentType,
+        width: media.width,
+        height: media.height,
+      })
+      .from(packagePreviews)
+      .innerJoin(media, eq(media.id, packagePreviews.mediaId))
+      .where(eq(packagePreviews.packageVersionId, row.id))
+      .orderBy(asc(packagePreviews.position)),
+    deps.db
+      .select({ check: packageAudits.check, result: packageAudits.result, details: packageAudits.details })
+      .from(packageAudits)
+      .where(eq(packageAudits.packageVersionId, row.id))
+      .orderBy(asc(packageAudits.check)),
   ]);
 
   return {
@@ -152,8 +222,18 @@ async function getVersionDetail(
     tarballSha512Verified: row.tarballSha512Verified,
     hasProvenance: row.provenance !== null && row.provenance !== undefined,
     readmeHtml: row.readmeHtml,
+    platforms: platformsOf(row.manifest),
     facets,
     permissions,
+    previews: previews.map((preview) => ({
+      kind: preview.kind,
+      url: mediaUrlFor(preview.r2Key),
+      alt: preview.alt,
+      contentType: preview.contentType,
+      width: preview.width,
+      height: preview.height,
+    })),
+    securityChecks: checks.map((check) => ({ ...check, details: check.details ?? null })),
   };
 }
 

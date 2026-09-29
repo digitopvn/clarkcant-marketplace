@@ -38,6 +38,9 @@ importers:
       globals:
         specifier: 17.12.0
         version: 17.12.0
+      tsx:
+        specifier: 4.23.15
+        version: 4.23.15
       typescript:
         specifier: 6.0.3
         version: 6.0.3
@@ -81,6 +84,9 @@ importers:
       '@marketplace/api':
         specifier: workspace:*
         version: link:../../packages/api
+      '@marketplace/auth':
+        specifier: workspace:*
+        version: link:../../packages/auth
       '@marketplace/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
@@ -90,6 +96,9 @@ importers:
       '@marketplace/marketplace':
         specifier: workspace:*
         version: link:../../packages/marketplace
+      '@marketplace/page-engine':
+        specifier: workspace:*
+        version: link:../../packages/page-engine
       '@tailwindcss/vite':
         specifier: 4.3.3
         version: 4.3.3(vite@8.3.1(@types/node@26.6.3)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1))
@@ -136,6 +145,9 @@ importers:
       '@hono/zod-openapi':
         specifier: 1.6.3
         version: 1.6.3(hono@4.13.11)(zod@4.6.5)
+      '@marketplace/auth':
+        specifier: workspace:*
+        version: link:../auth
       '@marketplace/contracts':
         specifier: workspace:*
         version: link:../contracts
@@ -145,6 +157,9 @@ importers:
       '@marketplace/marketplace':
         specifier: workspace:*
         version: link:../marketplace
+      '@marketplace/media':
+        specifier: workspace:*
+        version: link:../media
       hono:
         specifier: 4.13.11
         version: 4.13.11
@@ -166,6 +181,9 @@ importers:
       '@marketplace/db':
         specifier: workspace:*
         version: link:../db
+      '@marketplace/marketplace':
+        specifier: workspace:*
+        version: link:../marketplace
       better-auth:
         specifier: 1.7.6
         version: 1.7.6(drizzle-kit@0.31.11)(drizzle-orm@0.45.3(@cloudflare/workers-types@5.20260929.1)(kysely@0.29.6))(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(vitest@4.1.11(@types/node@26.6.3)(vite@8.3.1(@types/node@26.6.3)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1)))
@@ -236,6 +254,15 @@ importers:
       '@marketplace/db':
         specifier: workspace:*
         version: link:../db
+      '@marketplace/markdown':
+        specifier: workspace:*
+        version: link:../markdown
+      '@marketplace/media':
+        specifier: workspace:*
+        version: link:../media
+      '@marketplace/page-engine':
+        specifier: workspace:*
+        version: link:../page-engine
       drizzle-orm:
         specifier: 0.45.3
         version: 0.45.3(@cloudflare/workers-types@5.20260929.1)(kysely@0.29.6)
@@ -251,6 +278,9 @@ importers:
       '@marketplace/db':
         specifier: workspace:*
         version: link:../db
+      drizzle-orm:
+        specifier: 0.45.3
+        version: 0.45.3(@cloudflare/workers-types@5.20260929.1)(kysely@0.29.6)
       zod:
         specifier: 4.6.5
         version: 4.6.5

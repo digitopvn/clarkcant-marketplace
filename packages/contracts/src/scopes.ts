@@ -8,6 +8,7 @@ import { z } from "zod";
 export const apiScopeSchema = z.enum([
   "packages:read",
   "packages:submit",
+  "packages:curate",
   "publishers:read",
   "publishers:write",
   "pages:read",
