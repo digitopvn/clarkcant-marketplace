@@ -6,18 +6,22 @@ import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 
 import { BLOCK_STYLES } from "../../packages/page-engine/src/block-styles";
-import { canvasStyle } from "./src/components/admin/canvas-document";
+import { CANVAS_SCRIPT, canvasStyle } from "./src/components/admin/canvas-document";
+import { THEME_SCRIPT } from "./src/components/theme-script";
 
 /** CSP source expression for inline content, hashed exactly as the browser hashes the element's text. */
 function sha256(content: string): `sha256-${string}` {
   return `sha256-${createHash("sha256").update(content, "utf8").digest("base64")}`;
 }
 
-// Inline <style> elements Astro does not hash itself. They are fixed at build time, so they are allowed here:
-// Astro 7.3's runtime `Astro.csp.insertStyleHash` does not reach the emitted policy, while script inserts do.
+// Inline <script>/<style> elements Astro does not hash itself. They are fixed at build time, so they are allowed
+// here: on Astro 7.3 runtime `Astro.csp.insert*Hash` calls from layouts did not reach the emitted policy (the theme
+// script was blocked on staging), so nothing relies on runtime inserts.
+// - the theme script (layouts/BaseLayout.astro, on every page);
 // - the page engine's block styles (components/page-engine/RenderedPage.astro, on every rendered page);
-// - the builder canvas stylesheet (srcdoc iframes inherit the builder page's policy; see admin/pages/[id].astro).
+// - the builder canvas script and stylesheet (srcdoc iframes inherit the builder page's policy; admin/pages/[id].astro).
 const TOKENS_CSS = readFileSync(new URL("./src/styles/tokens.css", import.meta.url), "utf8");
+const INLINE_SCRIPT_HASHES = [sha256(THEME_SCRIPT), sha256(CANVAS_SCRIPT)];
 const INLINE_STYLE_HASHES = [sha256(BLOCK_STYLES), sha256(canvasStyle(`${TOKENS_CSS}\n${BLOCK_STYLES}`))];
 
 // Server-rendered on Cloudflare Workers. The target environment (top-level dev, `staging`, `production`) is chosen
@@ -34,7 +38,7 @@ export default defineConfig({
   // Content Security Policy for every server-rendered page, sent as a response header on this adapter (not a <meta>
   // tag; checked on staging), with a hash for each script and
   // style Astro renders (islands, bundled scripts, inlined CSS). Inline content Astro does not process itself is
-  // allowed by hash at runtime (src/server/csp.ts). Directives that only work as a header (frame-ancestors) are sent
+  // allowed by the build-time hashes above. Directives that only work as a header (frame-ancestors) are sent
   // by src/middleware/security-headers.ts. Not active under `astro dev` (Vite serves unhashed modules).
   security: {
     csp: {
@@ -59,6 +63,7 @@ export default defineConfig({
       },
       scriptDirective: {
         resources: ["'self'"],
+        hashes: INLINE_SCRIPT_HASHES,
       },
     },
   },

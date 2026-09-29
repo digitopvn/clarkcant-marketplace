@@ -8,7 +8,7 @@ import SiteHeader from "../components/SiteHeader.astro";
 import ConsentBanner from "../components/consent/ConsentBanner.astro";
 import SeoHead from "../components/seo/SeoHead.astro";
 import ShareBar from "../components/share/ShareBar.astro";
-import { allowInlineScripts } from "../server/csp";
+import { THEME_SCRIPT } from "../components/theme-script";
 import { runtimeVars } from "../server/request-context";
 
 /**
@@ -52,22 +52,6 @@ const meta = buildPageMeta({
 const showShare = Boolean(seo) && !noindex && seo?.share !== false;
 const lang = seo?.locale ?? "en";
 
-/*
- * Applies a stored theme before first paint, but only when the visitor allowed preference storage (cookie
- * `cc_consent=v1.p1`, see components/consent/consent.ts); otherwise the system preference applies.
- */
-const THEME_SCRIPT = `(() => {
-  try {
-    if (!/(?:^|;\\s*)cc_consent=v1\\.p1(?:;|$)/.test(document.cookie)) return;
-    const theme = localStorage.getItem("theme");
-    if (theme === "light" || theme === "dark") document.documentElement.dataset.theme = theme;
-  } catch {
-    /* Storage can be unavailable (privacy modes); the system preference applies. */
-  }
-})();`;
-
-// Inline script Astro does not hash itself. (The page engine's block styles are allowed in astro.config.ts.)
-await allowInlineScripts(Astro.csp, THEME_SCRIPT);
 ---
 
 <!doctype html>

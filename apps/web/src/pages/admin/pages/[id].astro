@@ -8,7 +8,6 @@ import { CANVAS_SCRIPT } from "../../../components/admin/canvas-document";
 import WebmcpBuilderTools from "../../../components/webmcp/WebmcpBuilderTools.astro";
 import BaseLayout from "../../../layouts/BaseLayout.astro";
 import tokensCss from "../../../styles/tokens.css?raw";
-import { allowInlineScripts } from "../../../server/csp";
 import { createRequestContext } from "../../../server/request-context";
 
 export const prerender = false;
@@ -31,10 +30,9 @@ Astro.response.headers.set("X-Robots-Tag", "noindex");
 // Layout definitions hold readonly arrays; the island receives plain JSON copies.
 const layouts = listLayouts().map((layout) => ({ ...layout, regions: layout.regions.map((region) => ({ ...region, allowedBlocks: [...region.allowedBlocks] })) }));
 
-// The canvas iframe (srcdoc) inherits this page's CSP; allow exactly its inline script here. Its inline style is
-// fixed at build time and allowed in astro.config.ts, which hashes this same `canvasStyle(tokens + BLOCK_STYLES)`.
+// The canvas iframe (srcdoc) inherits this page's CSP. Its inline script and style are fixed at build time and
+// allowed by hash in astro.config.ts, which hashes this same CANVAS_SCRIPT and `canvasStyle(tokens + BLOCK_STYLES)`.
 const canvasCss = `${tokensCss}\n${BLOCK_STYLES}`;
-await allowInlineScripts(Astro.csp, CANVAS_SCRIPT);
 ---
 
 <BaseLayout title={state ? `Edit ${state.draft.document.meta.title} · Admin` : "Page not found · Admin"}>

@@ -85,10 +85,10 @@ and hashes of inline `<style>` elements; `object-src 'none'`, `base-uri 'self'`,
 middleware adds the header-only directives (`frame-ancestors`, `upgrade-insecure-requests`) without overriding what
 Astro set (`mergeCsp`). Non-HTML responses get `default-src 'none'`. Inline content Astro does not hash itself:
 
-- inline scripts (the theme script in `BaseLayout.astro`, the builder canvas script) are hashed at request time
-  through `Astro.csp.insertScriptHash` (`apps/web/src/server/csp.ts`);
-- fixed inline styles (page-engine block styles, the builder canvas stylesheet) are hashed at build time in
-  `astro.config.ts`, because runtime style-hash inserts do not reach the policy on Astro 7.3.
+- fixed inline scripts (the theme script in `components/theme-script.ts`, the builder canvas script) and fixed
+  inline styles (page-engine block styles, the builder canvas stylesheet) are hashed at build time in
+  `astro.config.ts`. Runtime `Astro.csp.insert*Hash` calls from layouts did not reach the emitted policy on Astro 7.3
+  (the theme script was blocked on staging), so inline content must be a fixed string hashed there.
 
 `style` attributes are allowed (`style-src-attr 'unsafe-inline'`); they cannot load or run anything. The CSP is not
 active under `astro dev`; `E2E_BUILT=1` Playwright runs check a production build for violations.
