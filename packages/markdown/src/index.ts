@@ -7,6 +7,7 @@ import { unified } from "unified";
 
 import { rehypeRewriteUrls } from "./rewrite-urls.ts";
 import { strictSanitizeSchema } from "./safe-html-schema.ts";
+import { assertHeadingOffset, rehypeShiftHeadings } from "./shift-headings.ts";
 
 export { strictSanitizeSchema } from "./safe-html-schema.ts";
 
@@ -26,6 +27,13 @@ export interface RenderMarkdownOptions {
   linkRel?: readonly string[];
   /** Maximum accepted source length in UTF-16 code units. Defaults to {@link DEFAULT_MAX_MARKDOWN_LENGTH}. */
   maxLength?: number;
+  /**
+   * Levels added to every heading (clamped at h6), for documents nested under a host page's own headings. Shifted
+   * headings carry their source level in `data-heading-level`. Integer 0-5; defaults to 0 (no change).
+   */
+  headingOffset?: number;
+  /** Removes a leading h1 whose text equals this (case and whitespace insensitive), e.g. a repeated package name. */
+  omitLeadingTitle?: string;
 }
 
 export class MarkdownInputTooLargeError extends Error {
@@ -62,13 +70,17 @@ function parseBaseUrl(baseUrl: string | undefined): URL | undefined {
 export function renderMarkdownToSafeHtml(md: string, opts: RenderMarkdownOptions = {}): string {
   const maxLength = opts.maxLength ?? DEFAULT_MAX_MARKDOWN_LENGTH;
   if (md.length > maxLength) throw new MarkdownInputTooLargeError(md.length, maxLength);
+  const headingOffset = opts.headingOffset ?? 0;
+  assertHeadingOffset(headingOffset);
 
+  // Sanitize first; every later pass works on the already filtered tree and only narrows or renames.
   const processor = unified()
     .use(remarkParse)
     .use(remarkGfm)
     .use(remarkRehype)
     .use(rehypeSanitize, strictSanitizeSchema)
     .use(rehypeRewriteUrls, { baseUrl: parseBaseUrl(opts.baseUrl), linkRel: [...(opts.linkRel ?? UGC_LINK_REL)] })
+    .use(rehypeShiftHeadings, { offset: headingOffset, omitLeadingTitle: opts.omitLeadingTitle })
     .use(rehypeStringify);
 
   return String(processor.processSync(md));

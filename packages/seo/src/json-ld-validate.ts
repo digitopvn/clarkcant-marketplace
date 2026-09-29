@@ -36,8 +36,9 @@ const nodeSchemas: Record<string, z.ZodType> = {
   ItemList: z
     .looseObject({ itemListElement: z.array(listItem.extend({ url: absoluteUrl, name: text.optional() })) })
     .superRefine((value, ctx) => consecutivePositions(value.itemListElement, ctx)),
+  // Google's breadcrumb rich result needs a trail of at least two items.
   BreadcrumbList: z
-    .looseObject({ itemListElement: z.array(listItem.extend({ name: text, item: absoluteUrl })).min(1) })
+    .looseObject({ itemListElement: z.array(listItem.extend({ name: text, item: absoluteUrl })).min(2) })
     .superRefine((value, ctx) => consecutivePositions(value.itemListElement, ctx)),
   FAQPage: z.looseObject({
     mainEntity: z

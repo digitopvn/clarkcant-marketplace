@@ -57,7 +57,7 @@ Supporting packages:
 | --- | --- |
 | `packages/auth` | Better Auth setup, admin allowlist, API tokens, OAuth/device flows |
 | `packages/page-engine` | Block registry, page document validation and operations, HTML + Markdown rendering |
-| `packages/markdown` | README/Markdown to sanitized HTML (strict allowlist, URL rewriting) |
+| `packages/markdown` | README/Markdown to sanitized HTML (strict allowlist, URL rewriting, heading offset) |
 | `packages/media` | R2 media keys, image sniffing, safe media serving |
 | `packages/seo` | Canonical URLs, meta, JSON-LD builders and validator, sitemaps, robots, `llms.txt`, share links, Markdown twins |
 | `packages/sdk`, `packages/mcp`, `packages/webmcp` | Typed API client, MCP server, in-page WebMCP tools |
@@ -95,7 +95,7 @@ Markdown form, a `.md` twin linked with `<link rel="alternate" type="text/markdo
 | HTML | Twin | Source |
 | --- | --- | --- |
 | `/` | `/index.md` | featured and latest packages, categories |
-| `/<slug>` (builder pages) | `/<slug>.md` | page engine `renderMarkdown` for the live revision (same as `GET /api/v1/pages/{slug}?format=md`) |
+| `/<slug>` (builder pages) | `/<slug>.md` | page engine `renderMarkdown` for the live revision (same as `GET /api/v1/pages/{slug}?format=md`); package list lines link each package's `.md` twin by absolute URL, not its HTML page |
 | `/packages/<name>` | `/packages/<name>.md` | package metadata and sanitized README |
 | `/packages`, `/collections` | `/packages.md`, `/collections.md` | catalogue listings (with `ItemList` JSON-LD on the HTML) |
 | `/categories/<slug>`, `/collections/<slug>` | `.md` | listings |
@@ -113,8 +113,16 @@ adds a large WASM module to the Worker bundle and needs TTF font files the proje
 
 The share bar (`components/share/ShareBar.astro`) leads with Copy as Markdown (the twin) and a View as Markdown
 link, then Copy URL, the native Share sheet, and "Ask ChatGPT/Claude/Perplexity/Gemini" (adapters in
-`packages/seo/src/share.ts`). ChatGPT, Claude and Perplexity accept a prefilled prompt in the URL; Gemini does not,
-so the prompt is copied and Gemini opens empty. Every action has a manual copy fallback.
+`packages/seo/src/share.ts`, `ShareTarget["id"]` is `"chatgpt" | "claude" | "perplexity" | "gemini"`). ChatGPT,
+Claude and Perplexity accept a prefilled prompt in the URL; Gemini does not, so the prompt is copied and Gemini opens
+empty. Every action has a manual copy fallback.
+
+Package READMEs are rendered once, at index time (`renderReadme` in `packages/marketplace/src/indexing/index-package.ts`),
+with `renderMarkdownToSafeHtml(..., { headingOffset: 2, omitLeadingTitle: displayName })`. Headings are shifted on
+the sanitized tree, so a README `#` becomes an `h3` under the page's h1 and "README" h2, keeps its source level in
+`data-heading-level`, and a leading title repeating the package name is dropped. The package page renders the
+stored HTML unchanged; README HTML must never be rewritten as a string. Versions indexed before this change keep
+their unshifted headings until re-indexed (local development data only).
 
 ## Data
 

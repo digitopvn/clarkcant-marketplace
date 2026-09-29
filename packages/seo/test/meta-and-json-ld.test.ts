@@ -90,8 +90,22 @@ describe("JSON-LD builders", () => {
 
   it("rejects relative URLs, broken positions, missing fields and unknown types", () => {
     expect(validateJsonLd({ ...packageJsonLd(SITE, pkg), url: "/packages/x" })).not.toEqual([]);
-    const list = breadcrumbJsonLd(SITE, [{ name: "A", path: "/a" }]);
-    expect(validateJsonLd({ ...list, itemListElement: [{ "@type": "ListItem", position: 2, name: "A", item: `${SITE}/a` }] })).not.toEqual([]);
+    const list = breadcrumbJsonLd(SITE, [
+      { name: "Home", path: "/" },
+      { name: "A", path: "/a" },
+    ]);
+    expect(validateJsonLd(list)).toEqual([]);
+    expect(
+      validateJsonLd({
+        ...list,
+        itemListElement: [
+          { "@type": "ListItem", position: 1, name: "Home", item: `${SITE}/` },
+          { "@type": "ListItem", position: 3, name: "A", item: `${SITE}/a` },
+        ],
+      }),
+    ).not.toEqual([]);
+    // A breadcrumb trail needs at least two items to be a rich result.
+    expect(validateJsonLd(breadcrumbJsonLd(SITE, [{ name: "A", path: "/a" }]))).not.toEqual([]);
     expect(validateJsonLd({ "@context": "https://schema.org", "@type": "FAQPage", mainEntity: [] })).not.toEqual([]);
     expect(validateJsonLd({ "@context": "https://schema.org", "@type": "Recipe", name: "x" })).toEqual([{ path: "@type", message: 'unsupported type "Recipe"' }]);
     expect(validateJsonLd({ "@type": "Organization", name: "x" })).not.toEqual([]);

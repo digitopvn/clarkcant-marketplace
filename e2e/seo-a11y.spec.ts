@@ -275,17 +275,34 @@ test.describe("accessibility and layout", () => {
     });
   }
 
-  test("the package listing reflows at 320px and applies a filter as soon as it changes", async ({ page }) => {
+  test("the package listing reflows at 320px and applies a filter picked with a pointer", async ({ page }) => {
     await page.setViewportSize({ width: 320, height: 700 });
     await page.goto("/packages", { waitUntil: "networkidle" });
     await expectFitsWidth(page, 320);
-    const slug = await page.getByLabel("Category").locator("option").nth(1).getAttribute("value").catch(() => null);
+    const category = page.getByLabel("Category");
+    const slug = await category.locator("option").nth(1).getAttribute("value").catch(() => null);
     test.skip(!slug, "No categories to filter by");
-    await Promise.all([
-      page.waitForURL(new RegExp(`/packages\\?.*category=${slug}`)),
-      page.getByLabel("Category").selectOption(slug ?? ""),
-    ]);
+    await category.click();
+    await Promise.all([page.waitForURL(new RegExp(`/packages\\?.*category=${slug}`)), category.selectOption(slug ?? "")]);
     await expect(page.getByRole("link", { name: "Clear filters" })).toHaveAttribute("href", "/packages");
+  });
+
+  test("a filter changed from the keyboard does not navigate until applied", async ({ page }) => {
+    await page.goto("/packages", { waitUntil: "networkidle" });
+    const category = page.getByLabel("Category");
+    const options = await category.locator("option").count();
+    test.skip(options < 2, "No categories to filter by");
+    let navigations = 0;
+    page.on("framenavigated", (frame) => {
+      if (frame === page.mainFrame()) navigations += 1;
+    });
+    await category.focus();
+    await page.keyboard.press("ArrowDown");
+    await page.waitForTimeout(750);
+    expect(navigations).toBe(0);
+    await expect(page).toHaveURL(/\/packages$/);
+    await expect(category).toBeFocused();
+    await expect(page.getByText("press Enter or Search to apply")).toBeVisible();
   });
 
   test("footer links and buttons have at least a 24px target", async ({ page }) => {

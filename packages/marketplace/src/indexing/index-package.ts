@@ -162,7 +162,11 @@ async function ingestVersion(deps: MarketplaceDeps, registry: NpmRegistry, resol
   const verification = await verifyTarballIntegrity(tarball, resolved.integrity);
   const archive = await readPackageArchive(tarball);
   const manifest = validateManifest(archive.manifestText, resolved.version);
-  const { readmeMd, readmeHtml, omitted: readmeOmitted } = renderReadme(archive, resolved);
+  const { readmeMd, readmeHtml, omitted: readmeOmitted } = renderReadme(
+    archive,
+    resolved,
+    manifest.normalized.displayName ?? resolved.name,
+  );
 
   const media = mediaDeps(deps);
   const storedPreviews: { mediaId: string; path: string }[] = [];
@@ -271,6 +275,9 @@ interface CheckRow {
  */
 export const MAX_README_HTML_BYTES = 512 * 1024;
 
+/** README h1 renders as h3: below the package page's h1 (package name) and its "README" h2. */
+const README_HEADING_OFFSET = 2;
+
 interface ReadmeOutcome {
   readmeMd: string | null;
   readmeHtml: string | null;
@@ -281,8 +288,12 @@ interface ReadmeOutcome {
  * Renders the README once, at index time. Every limit here is a deterministic fact about an immutable version, so an
  * oversized or unrenderable README is recorded as omitted (a `readme` warn check) instead of failing the version,
  * which would only be retried to the same result.
+ *
+ * The README is nested content on the package page, which already owns the only h1 (the package name) and a "README"
+ * h2, so headings are shifted down {@link README_HEADING_OFFSET} levels on the parsed tree and a leading title that
+ * repeats the display name is dropped. The stored HTML is served as is; nothing rewrites it at render time.
  */
-function renderReadme(archive: PackageArchive, resolved: ResolvedVersion): ReadmeOutcome {
+function renderReadme(archive: PackageArchive, resolved: ResolvedVersion, displayName: string): ReadmeOutcome {
   if (archive.readmeOmitted) {
     return { readmeMd: null, readmeHtml: null, omitted: { path: archive.readmeOmitted.path, reason: archive.readmeOmitted.reason } };
   }
@@ -293,6 +304,8 @@ function renderReadme(archive: PackageArchive, resolved: ResolvedVersion): Readm
     html = renderMarkdownToSafeHtml(text, {
       baseUrl: readmeBaseUrl(resolved.name, resolved.version),
       maxLength: MAX_README_BYTES,
+      headingOffset: README_HEADING_OFFSET,
+      omitLeadingTitle: displayName,
     });
   } catch (error) {
     const reason = error instanceof MarkdownInputTooLargeError ? error.message : "README could not be rendered";

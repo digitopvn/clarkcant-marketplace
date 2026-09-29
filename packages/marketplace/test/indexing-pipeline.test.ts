@@ -102,7 +102,10 @@ describe("indexing the example widget from a real npm pack tarball", () => {
     }
 
     const readme = latest?.readmeHtml ?? "";
-    expect(readme).toContain("<h1>Example frame widget</h1>");
+    // Nested under the page's h1 and "README" h2: the repeated title is dropped and headings shift down two levels.
+    expect(readme).not.toContain("Example frame widget</h");
+    expect(readme).not.toMatch(/<h[12][\s>]/);
+    expect(readme).toContain('<h4 data-heading-level="2">What it asks for</h4>');
     expect(readme).toContain(`src="https://cdn.jsdelivr.net/npm/${FIXTURE_NAME}@1.0.0/previews/cover.png"`);
     expect(readme).toContain(`href="https://cdn.jsdelivr.net/npm/${FIXTURE_NAME}@1.0.0/widgets/main/widget.json"`);
     expect(readme).toContain('rel="nofollow ugc noopener noreferrer"');

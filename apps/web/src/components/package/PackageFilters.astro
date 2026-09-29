@@ -58,12 +58,12 @@ const active = Boolean(
     </button>
   </div>
   <fieldset class="grid min-w-0 grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
-    <legend class="sr-only">Filters (applied as soon as you change one)</legend>
+    <legend class="sr-only">Filters</legend>
     {
       selects.map((select) => (
         <label class="grid gap-1 text-xs text-muted">
           {select.label}
-          <select name={select.name} class={selectClass}>
+          <select name={select.name} class={selectClass} aria-describedby="package-filters-hint">
             <option value="">Any</option>
             {select.options.map((option) => (
               <option value={option.value} selected={current[select.name] === option.value}>
@@ -75,6 +75,9 @@ const active = Boolean(
       ))
     }
   </fieldset>
+  <p id="package-filters-hint" class="text-xs text-muted">
+    Choose filters, then press Enter or Search to apply them. A filter picked with a mouse or touch applies at once.
+  </p>
   {values.publisher && <input type="hidden" name="publisher" value={values.publisher} />}
   {
     active && (
@@ -88,10 +91,28 @@ const active = Boolean(
 </form>
 
 <script>
-  // Progressive enhancement: a changed filter applies immediately. Without JavaScript the Search button submits.
+  // Progressive enhancement. Without JavaScript the Search button submits the form.
+  // A filter picked with a pointer applies at once. Keyboard changes never navigate on their own (WCAG 3.2.2): arrow
+  // keys on a closed <select> change its value and fire `change` in several browsers, so a keyboard user applies the
+  // filters with Enter or the Search button instead.
   for (const form of document.querySelectorAll<HTMLFormElement>("form[data-package-filters]")) {
+    let pointerSelect: HTMLSelectElement | null = null;
+    form.addEventListener("pointerdown", (event) => {
+      pointerSelect = event.target instanceof HTMLSelectElement ? event.target : null;
+    });
+    form.addEventListener("keydown", (event) => {
+      if (!(event.target instanceof HTMLSelectElement)) return;
+      pointerSelect = null;
+      if (event.key === "Enter") {
+        event.preventDefault();
+        form.requestSubmit();
+      }
+    });
+    form.addEventListener("focusout", () => {
+      pointerSelect = null;
+    });
     form.addEventListener("change", (event) => {
-      if (event.target instanceof HTMLElement && event.target.tagName === "SELECT") form.requestSubmit();
+      if (event.target instanceof HTMLSelectElement && event.target === pointerSelect) form.requestSubmit();
     });
   }
 </script>

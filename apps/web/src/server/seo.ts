@@ -28,6 +28,9 @@ import type { SeoProps } from "../layouts/BaseLayout.astro";
 /** Link unfurlers (Slack, X, LinkedIn, iMessage) do not render SVG cards; only raster cards are advertised. */
 const RASTER_CARD_TYPES = new Set(["image/png", "image/jpeg", "image/webp"]);
 
+/** Leads the trail on top-level listings: a breadcrumb rich result needs at least two items. */
+const HOME_CRUMB = { name: "Home", path: "/" } as const;
+
 export function socialCardImage(card: PackagePreview | null): SocialImage | null {
   if (!card || !RASTER_CARD_TYPES.has(card.contentType)) return null;
   return { url: card.url, width: card.width, height: card.height, type: card.contentType, alt: card.alt };
@@ -73,7 +76,7 @@ export function packagesIndexSeo(siteUrl: string, items: readonly PackageSummary
     jsonLd: indexable
       ? [
           itemListJsonLd(siteUrl, "ClarkCant packages", packageListEntries(items)),
-          breadcrumbJsonLd(siteUrl, [{ name: "Packages", path: "/packages" }]),
+          breadcrumbJsonLd(siteUrl, [HOME_CRUMB, { name: "Packages", path: "/packages" }]),
         ]
       : [],
   };
@@ -88,7 +91,7 @@ export function collectionsIndexSeo(siteUrl: string, collections: readonly Colle
         "ClarkCant package collections",
         collections.map((collection) => ({ name: collection.title, path: collectionPath(collection.slug) })),
       ),
-      breadcrumbJsonLd(siteUrl, [{ name: "Collections", path: "/collections" }]),
+      breadcrumbJsonLd(siteUrl, [HOME_CRUMB, { name: "Collections", path: "/collections" }]),
     ],
   };
 }

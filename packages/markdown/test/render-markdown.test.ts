@@ -80,6 +80,98 @@ describe("renderMarkdownToSafeHtml", () => {
   });
 });
 
+describe("renderMarkdownToSafeHtml headingOffset", () => {
+  /**
+   * Tokenizes start tags the way a browser does for this serializer's output (every attribute value is double-quoted,
+   * with `"` and `&` escaped inside), so assertions see real elements, not tag-like text inside attribute values.
+   */
+  function elements(html: string): { tagName: string; attributes: string[] }[] {
+    const found: { tagName: string; attributes: string[] }[] = [];
+    const startTag = /<([a-z][a-z0-9]*)/gy;
+    const attribute = /\s+([^\s"'>/=]+)(?:="([^"]*)")?/gy;
+    let index = 0;
+    while (index < html.length) {
+      const open = html.indexOf("<", index);
+      if (open === -1) break;
+      startTag.lastIndex = open;
+      const tag = startTag.exec(html);
+      if (!tag) {
+        index = open + 1;
+        continue;
+      }
+      const attributes: string[] = [];
+      attribute.lastIndex = startTag.lastIndex;
+      let cursor = startTag.lastIndex;
+      for (let match = attribute.exec(html); match; match = attribute.exec(html)) {
+        attributes.push(match[1] ?? "");
+        cursor = attribute.lastIndex;
+      }
+      found.push({ tagName: tag[1] ?? "", attributes: attributes.sort() });
+      index = html.indexOf(">", cursor) + 1 || html.length;
+    }
+    return found;
+  }
+
+  it("shifts heading levels, clamps at h6 and records the source level", () => {
+    const html = renderMarkdownToSafeHtml("# One\n\n## Two\n\n#### Four\n\n##### Five\n\n###### Six", { headingOffset: 2 });
+    expect(html).toContain('<h3 data-heading-level="1">One</h3>');
+    expect(html).toContain('<h4 data-heading-level="2">Two</h4>');
+    expect(html).toContain('<h6 data-heading-level="4">Four</h6>');
+    expect(html).toContain('<h6 data-heading-level="5">Five</h6>');
+    expect(html).toContain('<h6 data-heading-level="6">Six</h6>');
+    expect(html).not.toMatch(/<h[12][\s>]/);
+  });
+
+  it("leaves headings unchanged without an offset", () => {
+    expect(renderMarkdownToSafeHtml("# One")).toBe("<h1>One</h1>");
+  });
+
+  it("never turns heading-like text inside attributes into markup", () => {
+    const md = [
+      "# Title",
+      "",
+      `[x](https://a.example "<h1 x><a href=https://evil.example class='fixed inset-0'>Install</a>")`,
+      "",
+      "![<h2 y><img src=x onerror=alert(1)>](https://a.example/i.png)",
+    ].join("\n");
+    const plain = elements(renderMarkdownToSafeHtml(md));
+    const shifted = elements(renderMarkdownToSafeHtml(md, { headingOffset: 2 }));
+
+    // Same elements with the same attributes, except the renamed heading and its one added attribute.
+    expect(shifted.map((el) => el.tagName)).toEqual(["h3", "p", "a", "p", "img"]);
+    expect(plain.map((el) => el.tagName)).toEqual(["h1", "p", "a", "p", "img"]);
+    expect(shifted.slice(1)).toEqual(plain.slice(1));
+    expect(shifted[0]?.attributes).toEqual(["data-heading-level"]);
+    expect(shifted.find((el) => el.tagName === "a")?.attributes).toEqual(["href", "rel", "title"]);
+    expect(shifted.find((el) => el.tagName === "img")?.attributes).toEqual(["alt", "decoding", "loading", "referrerpolicy", "src"]);
+    // The hostile text survives only as attribute values.
+    const html = renderMarkdownToSafeHtml(md, { headingOffset: 2 });
+    expect(html).toContain('title="<h1 x>');
+    expect(html).toContain("<h2 y>");
+  });
+
+  it("drops a leading h1 that repeats the given title, and only that", () => {
+    expect(renderMarkdownToSafeHtml("# Example  `frame` widget\n\nBody", { omitLeadingTitle: "example frame widget" })).toBe(
+      "<p>Body</p>",
+    );
+    expect(renderMarkdownToSafeHtml("# Other\n\nBody", { omitLeadingTitle: "Example", headingOffset: 2 })).toBe(
+      '<h3 data-heading-level="1">Other</h3>\n<p>Body</p>',
+    );
+    expect(renderMarkdownToSafeHtml("Intro\n\n# Example", { omitLeadingTitle: "Example" })).toBe(
+      "<p>Intro</p>\n<h1>Example</h1>",
+    );
+    expect(renderMarkdownToSafeHtml("## Example\n\nBody", { omitLeadingTitle: "Example" })).toBe(
+      "<h2>Example</h2>\n<p>Body</p>",
+    );
+  });
+
+  it("rejects an offset that is not an integer from 0 to 5", () => {
+    for (const headingOffset of [-1, 6, 1.5, Number.NaN]) {
+      expect(() => renderMarkdownToSafeHtml("# x", { headingOffset })).toThrow(TypeError);
+    }
+  });
+});
+
 describe("strictSanitizeSchema", () => {
   // The Markdown pipeline never admits raw HTML, so the schema is exercised directly against a hostile HTML tree.
   function sanitize(tree: unknown): string {
