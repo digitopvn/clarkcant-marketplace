@@ -1,0 +1,20 @@
+{
+  "name": "@marketplace/seo",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./share": "./src/share.ts",
+    "./package-labels": "./src/package-labels.ts",
+    "./paths": "./src/paths.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "@marketplace/contracts": "workspace:*",
+    "@marketplace/page-engine": "workspace:*",
+    "zod": "4.6.5"
+  }
+}

@@ -1,6 +1,6 @@
 # Phase 06 — SEO/GEO, sharing, security hardening, legal, docs (M5 + M6)
 
-Status: pending · Wave 3 (parallel with 05) · Depends on 02, 03, 04.
+Status: completed (2026-09-29) · Wave 3 (parallel with 05) · Depends on 02, 03, 04. Report: plans/reports/fullstack-developer-260929-2115-phase-06-seo-hardening.md
 
 ## Owns (only these files)
 - `packages/seo/**` (new): canonical/meta builder, JSON-LD builders (SoftwareSourceCode/SoftwareApplication,

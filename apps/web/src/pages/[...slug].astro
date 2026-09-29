@@ -2,8 +2,10 @@
 import { isMarketplaceError } from "@marketplace/contracts";
 import { HOME_PAGE_SLUG, getPublishedPage, pagePath, renderPageDocument, type PublishedPage } from "@marketplace/marketplace";
 
+import { markdownPathFor, techArticleJsonLd } from "@marketplace/seo";
+
 import RenderedPage from "../components/page-engine/RenderedPage.astro";
-import BaseLayout from "../layouts/BaseLayout.astro";
+import BaseLayout, { type SeoProps } from "../layouts/BaseLayout.astro";
 import { createRequestContext } from "../server/request-context";
 
 export const prerender = false;
@@ -33,16 +35,39 @@ if (!page || !rendered) {
   Astro.response.status = 404;
 } else {
   const canonical = `${vars.PUBLIC_SITE_URL}${pagePath(page.page.slug)}`;
-  const markdown = `${vars.PUBLIC_SITE_URL}/api/v1/pages/${encodeURIComponent(page.page.slug)}?format=md`;
+  const markdown = `${vars.PUBLIC_SITE_URL}${markdownPathFor(pagePath(page.page.slug))}`;
   Astro.response.headers.set("Link", `<${canonical}>; rel="canonical", <${markdown}>; rel="alternate"; type="text/markdown"`);
   Astro.response.headers.set("ETag", `"${page.revisionId}"`);
   if (page.document.meta.noindex) Astro.response.headers.set("X-Robots-Tag", "noindex");
 }
+
+const isArticle = page?.page.kind === "legal" || page?.page.kind === "docs";
+const seo: SeoProps | undefined =
+  page && rendered
+    ? {
+        path: pagePath(page.page.slug),
+        type: isArticle ? "article" : "website",
+        image: rendered.socialImage,
+        noindex: page.document.meta.noindex,
+        locale: page.document.meta.locale,
+        jsonLd: isArticle
+          ? [
+              techArticleJsonLd(vars.PUBLIC_SITE_URL, {
+                title: page.document.meta.title,
+                description: page.document.meta.description,
+                path: pagePath(page.page.slug),
+                dateModified: page.publishedAt,
+                locale: page.document.meta.locale,
+              }),
+            ]
+          : [],
+      }
+    : undefined;
 ---
 
 {
   page && rendered ? (
-    <BaseLayout title={page.document.meta.title} description={page.document.meta.description || undefined}>
+    <BaseLayout title={page.document.meta.title} description={page.document.meta.description || undefined} seo={seo}>
       <RenderedPage html={rendered.html} structuredData={rendered.structuredData} />
     </BaseLayout>
   ) : (

@@ -53,7 +53,15 @@ export function createApi(options: CreateApiOptions) {
       { name: "packages", description: "Package listings" },
       { name: "search", description: "Full-text search" },
       { name: "catalog", description: "Categories and collections" },
+      { name: "pages", description: "Published page documents and the page builder admin API (versioned, If-Match guarded)" },
+      { name: "account", description: "The signed-in account, personal API tokens, linked devices and OAuth grants" },
+      { name: "publishers", description: "Publisher organisations, members, verification and package claims" },
+      { name: "publish", description: "Package submissions: ask the marketplace to index an npm package version" },
+      { name: "curation", description: "Curator commands (packages:curate): curation status, featuring and collections" },
     ],
+    // Public reads need no credential; the empty requirement marks auth as optional. Operations that need a
+    // credential override this with their own requirement, and scopes are enforced by the services.
+    security: [{ bearerAuth: [] }, { sessionCookie: [] }, {}] as Record<string, string[]>[],
   }));
 
   app.onError(handleError);

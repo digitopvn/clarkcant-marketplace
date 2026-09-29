@@ -1,12 +1,14 @@
 ---
 import type { PackageSummary } from "@marketplace/contracts";
+import { packagePath } from "@marketplace/seo";
 
 interface Props {
   pkg: PackageSummary;
 }
 
 const { pkg } = Astro.props;
-const href = `/packages/${pkg.name}`;
+// The canonical form (`/packages/%40scope/name`), so internal links match the canonical URL and the sitemap.
+const href = packagePath(pkg.name);
 ---
 
 <article class="relative flex h-full flex-col gap-3 rounded-card border border-line bg-card p-5 shadow-card transition-colors hover:border-accent">

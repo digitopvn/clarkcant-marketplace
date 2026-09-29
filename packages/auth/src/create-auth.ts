@@ -62,6 +62,14 @@ export function apiAudience(origin: string): string {
 }
 
 /**
+ * The OAuth resource identifier (JWT `aud`) for the MCP endpoint. MCP clients request tokens for the resource named
+ * in `/.well-known/oauth-protected-resource/mcp` (RFC 8707/9728), so it must be a registered resource here.
+ */
+export function mcpAudience(origin: string): string {
+  return `${origin}/mcp`;
+}
+
+/**
  * Builds a Better Auth instance for one request. Never cache it at module scope: it closes over the current
  * invocation's D1 binding (and `waitUntil`), which must not leak into another request.
  */
@@ -140,8 +148,8 @@ export function createAuth(options: CreateAuthOptions) {
         // MCP clients register themselves (RFC 7591) without an account; they are public clients bound to PKCE.
         allowDynamicClientRegistration: true,
         allowUnauthenticatedClientRegistration: true,
-        resources: [audience],
-        clientRegistrationDefaultResources: [audience],
+        resources: [audience, mcpAudience(origin)],
+        clientRegistrationDefaultResources: [audience, mcpAudience(origin)],
       }),
     ],
     telemetry: { enabled: false },

@@ -178,6 +178,11 @@ export const renderedDocumentSchema = z.object({
   structuredData: z.array(z.record(z.string(), z.unknown())),
   summary: z.string(),
   diagnostics: z.array(z.string()),
+  /** Resolved share image (`meta.image`), or null when the page uses the default card. */
+  socialImage: z
+    .object({ id: z.string(), url: z.string(), contentType: z.string(), width: z.int().nullable(), height: z.int().nullable() })
+    .nullable()
+    .optional(),
   document: pageDocumentSchema,
 });
 export type RenderedDocument = z.infer<typeof renderedDocumentSchema>;
@@ -198,7 +203,13 @@ const blockNodeApiSchema = z.object({
 export const pageDocumentApiSchema = z.object({
   schemaVersion: z.literal(1),
   layout: z.object({ id: z.string(), version: z.int() }),
-  meta: z.object({ title: z.string(), description: z.string(), locale: z.string(), noindex: z.boolean() }),
+  meta: z.object({
+    title: z.string(),
+    description: z.string(),
+    locale: z.string(),
+    noindex: z.boolean(),
+    image: z.string().optional().describe("Media id of the share image"),
+  }),
   blocks: z.array(blockNodeApiSchema),
 });
 

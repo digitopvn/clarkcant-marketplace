@@ -1,0 +1,57 @@
+---
+/**
+ * Exposes the admin page builder to in-browser agents through WebMCP: edit the selected block, add a block, preview.
+ * Tools call the same admin API as the builder with the admin's session, read the selection and unsaved-changes
+ * state from the builder's root element, and announce saved drafts so the builder reloads them.
+ */
+---
+
+<webmcp-builder-tools hidden></webmcp-builder-tools>
+
+<script>
+  const DRAFT_CHANGED_EVENT = "marketplace:page-draft-changed";
+
+  function hasModelContext(): boolean {
+    return "modelContext" in document || "modelContext" in navigator;
+  }
+
+  class WebmcpBuilderTools extends HTMLElement {
+    private controller: AbortController | null = null;
+
+    connectedCallback() {
+      if (!hasModelContext()) return;
+      const controller = new AbortController();
+      this.controller = controller;
+      void Promise.all([import("@marketplace/sdk"), import("@marketplace/webmcp")])
+        .then(([sdk, webmcp]) => {
+          if (controller.signal.aborted) return;
+          const client = sdk.createMarketplaceClient({ baseUrl: location.origin, credentials: "same-origin" });
+          const snapshot = () => {
+            // The builder island renders this root; it may hydrate after this script runs, so read it per call.
+            const root = document.querySelector<HTMLElement>("[data-webmcp-builder]");
+            const pageId = root?.dataset.pageId;
+            if (!root || !pageId) throw new Error("the page builder is not ready");
+            return { pageId, selectedBlockId: root.dataset.selectedBlock || null, dirty: root.dataset.dirty === "true" };
+          };
+          webmcp.registerWebMcpTools(
+            webmcp.pageBuilderTools({
+              client,
+              snapshot,
+              origin: location.origin,
+              onDraftChanged: (revisionId) =>
+                window.dispatchEvent(new CustomEvent(DRAFT_CHANGED_EVENT, { detail: { pageId: snapshot().pageId, revisionId } })),
+            }),
+            { signal: controller.signal },
+          );
+        })
+        .catch((error: unknown) => console.warn("WebMCP: builder tools unavailable", error));
+    }
+
+    disconnectedCallback() {
+      this.controller?.abort();
+      this.controller = null;
+    }
+  }
+
+  if (!customElements.get("webmcp-builder-tools")) customElements.define("webmcp-builder-tools", WebmcpBuilderTools);
+</script>

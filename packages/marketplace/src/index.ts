@@ -88,3 +88,21 @@ export { claimPackage, githubRepositoryFromUrl, listPublisherClaims } from "./pu
 export { createHttpVerificationPorts, type VerificationPorts } from "./publishers/verification-ports";
 
 export * from "./pages";
+
+export {
+  countPublicPackages,
+  listPublicPackageIndex,
+  listPublishedCollectionIndex,
+  listPublishedPages,
+  type CollectionIndexEntry,
+  type PackageIndexEntry,
+  type PublishedPageEntry,
+} from "./seo/site-index";
+
+export {
+  MAX_UPLOAD_MEDIA_BYTES,
+  uploadMedia,
+  uploadMediaInputSchema,
+  type UploadMediaInput,
+  type UploadedMedia,
+} from "./media/upload-media";

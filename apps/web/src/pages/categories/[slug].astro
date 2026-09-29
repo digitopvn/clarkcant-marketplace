@@ -5,10 +5,11 @@ import { getCategory, listPackages } from "@marketplace/marketplace";
 import PackageGrid from "../../components/package/PackageGrid.astro";
 import BaseLayout from "../../layouts/BaseLayout.astro";
 import { createRequestContext } from "../../server/request-context";
+import { categorySeo } from "../../server/seo";
 
 export const prerender = false;
 
-const { deps } = createRequestContext();
+const { deps, vars } = createRequestContext();
 const slug = Astro.params.slug ?? "";
 const cursor = Astro.url.searchParams.get("cursor") || undefined;
 
@@ -25,7 +26,11 @@ try {
 
 {
   category && page ? (
-    <BaseLayout title={category.name} description={category.description || `${category.name} packages for ClarkCant`}>
+    <BaseLayout
+      title={category.name}
+      description={category.description || `${category.name} packages for ClarkCant`}
+      seo={categorySeo(vars.PUBLIC_SITE_URL, category, page.items, Boolean(cursor))}
+    >
       <section class="container-page py-10">
         <nav aria-label="Breadcrumb" class="text-sm text-muted">
           <a href="/packages" class="hover:text-ink">Packages</a> / Categories

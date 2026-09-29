@@ -86,6 +86,7 @@ h3.pe-heading { font-size: var(--step-1, 1.25rem); font-family: var(--font-sans)
 .pe-diagnostic { border: 1px dashed var(--warning); color: var(--warning); background: color-mix(in srgb, var(--warning) 8%, transparent); border-radius: var(--radius-sm, 10px); padding: var(--space-3, .75rem) var(--space-4, 1rem); font-size: .875rem; margin: 0; }
 @media (max-width: 640px) {
   .pe-page { padding-block: var(--space-6, 2rem); }
+  .pe-prose table { display: block; max-width: 100%; overflow-x: auto; }
   .pe-cta { padding: var(--space-5, 1.25rem); }
 }
 `;

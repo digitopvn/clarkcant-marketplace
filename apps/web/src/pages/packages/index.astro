@@ -51,7 +51,10 @@ const activeCategory = categories.find((c) => c.slug === filters.category);
 const heading = filters.q ? `Results for “${filters.q}”` : activeCategory ? activeCategory.name : "All packages";
 ---
 
-<BaseLayout title={filters.q ? `Search: ${filters.q}` : "Packages"}>
+<BaseLayout
+  title={filters.q ? `Search: ${filters.q}` : "Packages"}
+  seo={{ path: "/packages", markdown: false, noindex: filtered || Boolean(cursor), share: !filtered }}
+>
   <section class="container-page py-10">
     <h1 class="font-display text-4xl sm:text-5xl">{heading}</h1>
     {

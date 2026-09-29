@@ -7,13 +7,16 @@ import PackageReadme from "../../components/package/PackageReadme.astro";
 import PermissionsPanel from "../../components/package/PermissionsPanel.astro";
 import SecurityFacts from "../../components/package/SecurityFacts.astro";
 import { platformLabel } from "../../components/package/package-labels";
-import BaseLayout from "../../layouts/BaseLayout.astro";
+import WebmcpPackageTools from "../../components/webmcp/WebmcpPackageTools.astro";
+import BaseLayout, { type SeoProps } from "../../layouts/BaseLayout.astro";
 import { createRequestContext } from "../../server/request-context";
+import { decodeRouteParam } from "../../server/route-params";
+import { packageSeo } from "../../server/seo";
 
 export const prerender = false;
 
-const { deps } = createRequestContext();
-const name = Astro.params.name ?? "";
+const { deps, vars } = createRequestContext();
+const name = decodeRouteParam(Astro.params.name);
 
 let pkg: PackageDetail | null = null;
 let install: PackageInstall | null = null;
@@ -33,6 +36,7 @@ const images = latest?.previews.filter((preview) => preview.kind === "image") ??
 const socialCard = latest?.previews.find((preview) => preview.kind === "social_card") ?? null;
 const dateFormat = new Intl.DateTimeFormat("en", { dateStyle: "medium", timeZone: "UTC" });
 const npmUrl = pkg ? `https://www.npmjs.com/package/${pkg.name}` : "";
+const seo: SeoProps | undefined = pkg ? packageSeo(vars.PUBLIC_SITE_URL, pkg, socialCard) : undefined;
 ---
 
 {
@@ -50,7 +54,7 @@ const npmUrl = pkg ? `https://www.npmjs.com/package/${pkg.name}` : "";
       </section>
     </BaseLayout>
   ) : (
-    <BaseLayout title={pkg.displayName} description={pkg.description || `${pkg.name} on the ClarkCant Marketplace`}>
+    <BaseLayout title={pkg.displayName} description={pkg.description || `${pkg.name} on the ClarkCant Marketplace`} seo={seo}>
       <article class="container-page py-10">
         <header class="grid gap-3">
           <nav aria-label="Breadcrumb" class="text-sm text-muted">
@@ -170,6 +174,7 @@ const npmUrl = pkg ? `https://www.npmjs.com/package/${pkg.name}` : "";
           )
         }
       </article>
+      <WebmcpPackageTools name={pkg.name} />
     </BaseLayout>
   )
 }

@@ -35,6 +35,14 @@
       "script_name": "clarkcant-marketplace-jobs-local"
     }
   ],
+  // Per-caller request budgets (per 60 s, per Cloudflare location) enforced by src/middleware/rate-limit.ts. Namespace ids
+  // differ per environment so counters never mix. Better Auth adds stricter per-endpoint limits for sign-in in D1.
+  "ratelimits": [
+    { "name": "API_RATE_LIMITER", "namespace_id": "1001", "simple": { "limit": 300, "period": 60 } },
+    { "name": "SEARCH_RATE_LIMITER", "namespace_id": "1002", "simple": { "limit": 60, "period": 60 } },
+    { "name": "AUTH_RATE_LIMITER", "namespace_id": "1003", "simple": { "limit": 60, "period": 60 } },
+    { "name": "PUBLISH_RATE_LIMITER", "namespace_id": "1004", "simple": { "limit": 10, "period": 60 } }
+  ],
   "env": {
     "staging": {
       "name": "clarkcant-marketplace-web-staging",
@@ -62,6 +70,13 @@
           "class_name": "IndexPackageWorkflow",
           "script_name": "clarkcant-marketplace-jobs-staging"
         }
+      ],
+      "observability": { "enabled": true },
+      "ratelimits": [
+        { "name": "API_RATE_LIMITER", "namespace_id": "2001", "simple": { "limit": 300, "period": 60 } },
+        { "name": "SEARCH_RATE_LIMITER", "namespace_id": "2002", "simple": { "limit": 60, "period": 60 } },
+        { "name": "AUTH_RATE_LIMITER", "namespace_id": "2003", "simple": { "limit": 60, "period": 60 } },
+        { "name": "PUBLISH_RATE_LIMITER", "namespace_id": "2004", "simple": { "limit": 10, "period": 60 } }
       ]
     },
     "production": {
@@ -90,6 +105,13 @@
           "class_name": "IndexPackageWorkflow",
           "script_name": "clarkcant-marketplace-jobs"
         }
+      ],
+      "observability": { "enabled": true },
+      "ratelimits": [
+        { "name": "API_RATE_LIMITER", "namespace_id": "3001", "simple": { "limit": 300, "period": 60 } },
+        { "name": "SEARCH_RATE_LIMITER", "namespace_id": "3002", "simple": { "limit": 60, "period": 60 } },
+        { "name": "AUTH_RATE_LIMITER", "namespace_id": "3003", "simple": { "limit": 60, "period": 60 } },
+        { "name": "PUBLISH_RATE_LIMITER", "namespace_id": "3004", "simple": { "limit": 10, "period": 60 } }
       ]
     }
   }

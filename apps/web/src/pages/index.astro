@@ -9,7 +9,9 @@ import {
   renderPageDocument,
 } from "@marketplace/marketplace";
 
-import PackageCard from "../components/PackageCard.astro";
+import { organizationJsonLd, webSiteJsonLd } from "@marketplace/seo";
+
+import PackageCard from "../components/package/PackageCard.astro";
 import RenderedPage from "../components/page-engine/RenderedPage.astro";
 import PackageSearchForm from "../components/PackageSearchForm.astro";
 import BaseLayout from "../layouts/BaseLayout.astro";
@@ -45,6 +47,13 @@ const hasPackages = featured.length > 0 || latest.length > 0;
 <BaseLayout
   title={landing?.page.document.meta.title ?? "ClarkCant Marketplace"}
   description={landing?.page.document.meta.description || undefined}
+  seo={{
+    path: "/",
+    image: landing?.rendered.socialImage ?? null,
+    noindex: landing?.page.document.meta.noindex ?? false,
+    locale: landing?.page.document.meta.locale,
+    jsonLd: [webSiteJsonLd(vars.PUBLIC_SITE_URL), organizationJsonLd()],
+  }}
 >
   {
     landing ? (

@@ -42,6 +42,9 @@ export const blockNodeSchema: z.ZodType<BlockNode> = z.object({
   },
 });
 
+/** Id of an uploaded media object (`media.id`); page documents reference media by id, never by URL. */
+export const mediaIdSchema = z.string().min(1).max(64).regex(/^[A-Za-z0-9_-]+$/, { error: "must be a media id" });
+
 export const pageDocumentSchema = z
   .object({
     schemaVersion: z.literal(PAGE_DOCUMENT_SCHEMA_VERSION),
@@ -51,6 +54,8 @@ export const pageDocumentSchema = z
       description: z.string().max(500).default(""),
       locale: z.string().min(2).max(35).default("en"),
       noindex: z.boolean().default(false),
+      /** Share image (Open Graph/Twitter card) as a raster media id. Optional: the site default card applies. */
+      image: mediaIdSchema.optional(),
     }),
     blocks: z.array(blockNodeSchema).max(MAX_BLOCKS_PER_LIST),
   })

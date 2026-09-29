@@ -8,6 +8,7 @@ export {
   OAUTH_API_SCOPES,
   OIDC_SCOPES,
   apiAudience,
+  mcpAudience,
   createAuth,
   type CreateAuthOptions,
   type MarketplaceAuth,
@@ -22,6 +23,7 @@ export {
   type CreateAuthRuntimeInput,
   type CredentialKind,
   type RequestAuth,
+  type ResolveRequestAuthOptions,
 } from "./request-auth";
 export { authSecretsSchema, parseAuthSecrets, type AuthSecrets } from "./secrets";
 // Scope helpers live in contracts so every package shares one definition; re-exported for convenience.

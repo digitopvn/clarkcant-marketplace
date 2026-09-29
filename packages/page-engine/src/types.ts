@@ -182,6 +182,8 @@ export interface RenderedPage {
   summary: string;
   /** Problems found while rendering (e.g. missing media). Never shown on public pages. */
   diagnostics: string[];
+  /** The page's own share image (`meta.image`) when it resolves to a raster media object; null otherwise. */
+  socialImage: MediaAsset | null;
 }
 
 export type { PageDocument };

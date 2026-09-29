@@ -3,6 +3,7 @@ import { pages } from "@marketplace/db";
 import { inArray } from "drizzle-orm";
 
 import type { MarketplaceDeps } from "../deps";
+import { LEGAL_PAGES } from "./legal-pages";
 import { HOME_PAGE_SLUG } from "./page-schemas";
 import { createPage, publishPage } from "./page-service";
 
@@ -132,7 +133,12 @@ const ABOUT: DefaultPage = {
   },
 };
 
-export const DEFAULT_PAGES: readonly DefaultPage[] = [LANDING, ABOUT];
+/** Landing, about and the policy pages (terms, privacy, cookies, refunds, GDPR, security, subprocessors). */
+export const DEFAULT_PAGES: readonly DefaultPage[] = [
+  LANDING,
+  ABOUT,
+  ...LEGAL_PAGES.map((page) => ({ slug: page.slug, kind: "legal" as const, document: page.document })),
+];
 
 export interface DefaultPagesResult {
   /** Slugs created and published by this call. */
@@ -142,7 +148,7 @@ export interface DefaultPagesResult {
 }
 
 /**
- * Creates and publishes the default landing and about pages when they do not exist yet. Existing pages are never
+ * Creates and publishes the default landing, about and policy pages when they do not exist yet. Existing pages are never
  * overwritten, so running it again (or concurrently) is safe. Requires `pages:publish`.
  */
 export async function ensureDefaultPages(deps: MarketplaceDeps, actor: Actor): Promise<DefaultPagesResult> {

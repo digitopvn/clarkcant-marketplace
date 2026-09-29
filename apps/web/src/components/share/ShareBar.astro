@@ -1,0 +1,132 @@
+---
+import { SHARE_TARGETS, shareFallbackText, type SharePayload } from "@marketplace/seo/share";
+
+/**
+ * Share and "ask an assistant" actions for one canonical page. Prefill links work without JavaScript; the copy and
+ * native-share buttons are enhanced by the script and stay hidden until it runs. When the clipboard or the Web Share
+ * API is unavailable, the canonical URL and the Markdown URL are shown for manual copying instead.
+ */
+type Props = SharePayload;
+
+const payload: SharePayload = {
+  title: Astro.props.title,
+  canonicalUrl: Astro.props.canonicalUrl,
+  markdownUrl: Astro.props.markdownUrl,
+};
+const fallback = shareFallbackText(payload);
+---
+
+<aside class="container-page mt-12" aria-labelledby="share-title" data-share-bar data-share={JSON.stringify(payload)}>
+  <div class="flex flex-col gap-3 rounded-2xl border border-line bg-raised p-4 sm:flex-row sm:items-center sm:justify-between">
+    <h2 id="share-title" class="text-sm font-medium text-ink">Share or ask an assistant</h2>
+    <div class="flex flex-wrap gap-2">
+      <button type="button" class="chrome-button" data-share-action="copy-url" hidden>Copy URL</button>
+      {payload.markdownUrl && (
+        <button type="button" class="chrome-button" data-share-action="copy-markdown" hidden>Copy as Markdown</button>
+      )}
+      <button type="button" class="chrome-button" data-share-action="native" hidden>Share…</button>
+      {
+        SHARE_TARGETS.map((target) =>
+          target.prefill ? (
+            <a class="chrome-button no-underline" href={target.url(payload)} target="_blank" rel="noopener noreferrer">
+              Ask {target.label}
+              <span class="sr-only">(opens in a new tab)</span>
+            </a>
+          ) : (
+            <button type="button" class="chrome-button" data-share-action="open-copied" data-share-url={target.url(payload)} hidden>
+              Ask {target.label}
+              <span class="sr-only">(copies the prompt, then opens in a new tab)</span>
+            </button>
+          ),
+        )
+      }
+    </div>
+  </div>
+  <p class="mt-2 min-h-5 text-sm text-muted" role="status" aria-live="polite" data-share-status></p>
+  <div data-share-fallback hidden>
+    <label class="text-sm text-muted" for="share-fallback-text">Copy these links manually:</label>
+    <textarea id="share-fallback-text" class="mt-1 w-full rounded-lg border border-line bg-card p-2 font-mono text-xs" rows="2" readonly>{fallback}</textarea>
+  </div>
+</aside>
+
+<script>
+  import { shareFallbackText, sharePrompt, type SharePayload } from "@marketplace/seo/share";
+
+  function parsePayload(raw: string | undefined): SharePayload | null {
+    try {
+      const value: unknown = JSON.parse(raw ?? "");
+      if (!value || typeof value !== "object") return null;
+      const { title, canonicalUrl, markdownUrl } = value as Record<string, unknown>;
+      if (typeof title !== "string" || typeof canonicalUrl !== "string") return null;
+      return { title, canonicalUrl, markdownUrl: typeof markdownUrl === "string" ? markdownUrl : null };
+    } catch {
+      return null;
+    }
+  }
+
+  async function fetchMarkdown(url: string): Promise<string> {
+    const response = await fetch(url, { headers: { accept: "text/markdown" } });
+    if (!response.ok) throw new Error(`Markdown request failed with ${response.status}`);
+    return response.text();
+  }
+
+  /** Copies text produced asynchronously while keeping the click's user activation (required by Safari). */
+  async function copyLater(text: Promise<string>): Promise<void> {
+    if (typeof ClipboardItem !== "undefined" && navigator.clipboard?.write) {
+      const blob = text.then((value) => new Blob([value], { type: "text/plain" }));
+      await navigator.clipboard.write([new ClipboardItem({ "text/plain": blob })]);
+      return;
+    }
+    await navigator.clipboard.writeText(await text);
+  }
+
+  for (const bar of document.querySelectorAll<HTMLElement>("[data-share-bar]")) {
+    const payload = parsePayload(bar.dataset.share);
+    if (!payload) continue;
+    const status = bar.querySelector<HTMLElement>("[data-share-status]");
+    const fallback = bar.querySelector<HTMLElement>("[data-share-fallback]");
+    const say = (message: string) => {
+      if (status) status.textContent = message;
+    };
+    const showFallback = (reason: string) => {
+      say(`${reason} The page links are below.`);
+      if (fallback) fallback.hidden = false;
+      fallback?.querySelector("textarea")?.select();
+    };
+    const canCopy = Boolean(navigator.clipboard);
+
+    for (const button of bar.querySelectorAll<HTMLButtonElement>("[data-share-action]")) {
+      const action = button.dataset.shareAction;
+      if (action === "native" && typeof navigator.share !== "function") continue;
+      button.hidden = false;
+      button.addEventListener("click", async () => {
+        try {
+          if (action === "copy-url") {
+            if (!canCopy) return showFallback("Copying is not available in this browser.");
+            await navigator.clipboard.writeText(shareFallbackText(payload));
+            say("Page URL and Markdown URL copied.");
+          } else if (action === "copy-markdown" && payload.markdownUrl) {
+            if (!canCopy) return showFallback("Copying is not available in this browser.");
+            await copyLater(fetchMarkdown(payload.markdownUrl));
+            say("Page copied as Markdown.");
+          } else if (action === "native") {
+            await navigator.share({ title: payload.title, text: shareFallbackText(payload), url: payload.canonicalUrl });
+          } else if (action === "open-copied") {
+            const target = button.dataset.shareUrl;
+            if (canCopy) {
+              await navigator.clipboard.writeText(sharePrompt(payload));
+              say("Prompt copied. Paste it into the assistant that just opened.");
+            } else {
+              showFallback("Copying is not available in this browser.");
+            }
+            if (target) window.open(target, "_blank", "noopener,noreferrer");
+          }
+        } catch (error) {
+          // A dismissed native share sheet is not an error worth reporting.
+          if (error instanceof DOMException && error.name === "AbortError") return;
+          showFallback("That did not work here.");
+        }
+      });
+    }
+  }
+</script>

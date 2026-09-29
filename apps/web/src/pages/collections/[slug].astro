@@ -5,10 +5,11 @@ import { getCollection } from "@marketplace/marketplace";
 import PackageGrid from "../../components/package/PackageGrid.astro";
 import BaseLayout from "../../layouts/BaseLayout.astro";
 import { createRequestContext } from "../../server/request-context";
+import { collectionSeo } from "../../server/seo";
 
 export const prerender = false;
 
-const { deps } = createRequestContext();
+const { deps, vars } = createRequestContext();
 const slug = Astro.params.slug ?? "";
 
 let collection: CollectionDetail | null = null;
@@ -22,7 +23,11 @@ try {
 
 {
   collection ? (
-    <BaseLayout title={collection.title} description={collection.description || `${collection.title}: a ClarkCant collection`}>
+    <BaseLayout
+      title={collection.title}
+      description={collection.description || `${collection.title}: a ClarkCant collection`}
+      seo={collectionSeo(vars.PUBLIC_SITE_URL, collection)}
+    >
       <section class="container-page py-10">
         <nav aria-label="Breadcrumb" class="text-sm text-muted">
           <a href="/collections" class="hover:text-ink">Collections</a>

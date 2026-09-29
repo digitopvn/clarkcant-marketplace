@@ -1,0 +1,71 @@
+---
+/**
+ * Cookie and storage choices. Shown by its script (so cached HTML never carries one visitor's state) when no valid
+ * `cc_consent` cookie exists, and reopened from the footer's "Cookie settings" button. Nothing optional is stored
+ * before a choice; "Essential only" also erases a previously stored preference.
+ */
+---
+
+<section
+  id="cookie-consent"
+  class="consent-banner"
+  aria-labelledby="cookie-consent-title"
+  hidden
+  data-consent-banner
+>
+  <div class="container-page flex flex-col gap-3 py-4 sm:flex-row sm:items-end sm:justify-between">
+    <div class="max-w-2xl text-sm">
+      <h2 id="cookie-consent-title" class="font-medium text-ink">Cookies and storage</h2>
+      <p class="mt-1 text-muted">
+        Essential cookies keep you signed in and remember this choice. With your permission we also remember your
+        theme on this device. There is no analytics or advertising tracking.
+        <a class="text-accent underline" href="/cookies">Cookie policy</a>
+      </p>
+    </div>
+    <div class="flex shrink-0 flex-wrap gap-2">
+      <button type="button" class="consent-button" data-consent-choice="essential">Essential only</button>
+      <button type="button" class="consent-button consent-button-primary" data-consent-choice="preferences">
+        Allow preferences
+      </button>
+    </div>
+  </div>
+</section>
+
+<script>
+  import { CONSENT_COOKIE, CONSENT_EVENT, THEME_STORAGE_KEY, consentCookieString, consentFromCookieHeader } from "./consent";
+
+  const banner = document.querySelector<HTMLElement>("[data-consent-banner]");
+
+  function open(): void {
+    if (!banner) return;
+    banner.hidden = false;
+    banner.querySelector<HTMLButtonElement>("[data-consent-choice='essential']")?.focus({ preventScroll: true });
+  }
+
+  function save(preferences: boolean): void {
+    document.cookie = consentCookieString({ preferences }, location.protocol === "https:");
+    if (consentFromCookieHeader(document.cookie) === null) {
+      // Cookies are blocked: keep the banner closed for this view rather than trapping the visitor in it.
+      console.warn(`${CONSENT_COOKIE} could not be stored; the choice applies to this page view only.`);
+    }
+    if (!preferences) {
+      try {
+        localStorage.removeItem(THEME_STORAGE_KEY);
+      } catch {
+        // Storage unavailable: nothing was stored.
+      }
+    }
+    document.dispatchEvent(new CustomEvent(CONSENT_EVENT, { detail: { preferences } }));
+    if (banner) banner.hidden = true;
+  }
+
+  if (banner) {
+    for (const button of banner.querySelectorAll<HTMLButtonElement>("[data-consent-choice]")) {
+      button.addEventListener("click", () => save(button.dataset.consentChoice === "preferences"));
+    }
+    if (consentFromCookieHeader(document.cookie) === null) banner.hidden = false;
+  }
+  for (const trigger of document.querySelectorAll<HTMLElement>("[data-consent-open]")) {
+    trigger.addEventListener("click", open);
+  }
+</script>

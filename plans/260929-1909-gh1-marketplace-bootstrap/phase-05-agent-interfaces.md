@@ -1,6 +1,6 @@
 # Phase 05 — Agent interfaces: OpenAPI, SDK, CLI, MCP, WebMCP (M4)
 
-Status: pending · Wave 3 (parallel with 06) · Depends on 02, 03, 04.
+Status: completed (2026-09-29, report: plans/reports/fullstack-developer-260929-2115-phase-05-agent-interfaces.md) · Wave 3 (parallel with 06) · Depends on 02, 03, 04.
 
 ## Owns (only these files)
 - `packages/sdk/**` (new), `apps/cli/**` (new), `packages/mcp/**` (new), `packages/webmcp/**` (new)

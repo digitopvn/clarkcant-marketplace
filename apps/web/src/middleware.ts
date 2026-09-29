@@ -1,7 +1,10 @@
 import { requestCarriesCredentials, resolveRequestAuth } from "@marketplace/auth";
 import { ANONYMOUS_ACTOR, actorHasScope, isMarketplaceError, type Actor } from "@marketplace/contracts";
-import { defineMiddleware } from "astro:middleware";
+import { defineMiddleware, sequence } from "astro:middleware";
 
+import { rateLimit } from "./middleware/rate-limit";
+import { requestLog } from "./middleware/request-log";
+import { securityHeaders } from "./middleware/security-headers";
 import { createWebAuthRuntime } from "./server/auth";
 
 declare global {
@@ -11,6 +14,8 @@ declare global {
     interface Locals {
       /** The caller of this page request. `/api/*` routes resolve their own actor inside the API. */
       actor: Actor;
+      /** Correlates this request's log lines; echoed as `X-Request-Id`. Set by the request-log middleware. */
+      requestId?: string;
     }
   }
 }
@@ -44,7 +49,7 @@ async function resolvePageActor(request: Request, waitUntil: (promise: Promise<u
   }
 }
 
-export const onRequest = defineMiddleware(async (context, next) => {
+const pageAuth = defineMiddleware(async (context, next) => {
   const { pathname } = context.url;
   if (pathname === "/api" || pathname.startsWith("/api/")) {
     context.locals.actor = ANONYMOUS_ACTOR;
@@ -75,3 +80,10 @@ export const onRequest = defineMiddleware(async (context, next) => {
   }
   return response;
 });
+
+/**
+ * Order matters: logging wraps everything (rejected requests included), security headers apply to every response
+ * (429s and redirects included), rate limits run before any authentication or database work, and the page actor
+ * and `/admin` guard run last.
+ */
+export const onRequest = sequence(requestLog, securityHeaders, rateLimit, pageAuth);

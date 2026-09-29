@@ -220,12 +220,15 @@ describe("admin page API", () => {
     expect(invalid.status).toBe(400);
   });
 
-  it("creates the default landing and about pages only for publishers", async () => {
+  it("creates the default landing, about and policy pages only for publishers", async () => {
     expect((await send("POST", "/admin/pages/defaults", asEditor())).status).toBe(403);
     const created = await send("POST", "/admin/pages/defaults", asAdmin());
     expect(created.status).toBe(200);
-    // "about" was created by an earlier test in this file, so only the landing page is new.
-    expect(await created.json()).toEqual({ created: ["home"], existing: ["about"] });
+    // "about" was created by an earlier test in this file, so only the landing and policy pages are new.
+    expect(await created.json()).toEqual({
+      created: ["home", "terms", "privacy", "cookies", "refunds", "gdpr", "security", "subprocessors"],
+      existing: ["about"],
+    });
     const home = await call("/pages/home?format=md");
     expect(home.status).toBe(200);
     expect(await home.text()).toContain("curated from npm");

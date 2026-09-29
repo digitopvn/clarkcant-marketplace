@@ -1,0 +1,124 @@
+---
+import { OPENAPI_PATH } from "@marketplace/api";
+
+import BaseLayout from "../../layouts/BaseLayout.astro";
+import { api } from "../../server/api";
+
+export const prerender = false;
+
+/*
+ * A lightweight reference rendered from the same OpenAPI document `/openapi.json` serves (generated from the route
+ * definitions), so it can never disagree with the API. Full schemas live in the JSON document.
+ */
+
+interface Parameter {
+  name: string;
+  in: string;
+  required?: boolean;
+  description?: string;
+}
+interface Operation {
+  operationId?: string;
+  summary?: string;
+  description?: string;
+  tags?: string[];
+  parameters?: Parameter[];
+  requestBody?: unknown;
+  responses?: Record<string, { description?: string }>;
+  security?: Record<string, string[]>[];
+}
+interface OpenApiDocument {
+  info: { title: string; version: string; description?: string };
+  tags?: { name: string; description?: string }[];
+  paths: Record<string, Record<string, Operation>>;
+}
+
+const METHODS = ["get", "post", "put", "patch", "delete"] as const;
+
+const response = await api.request(`${Astro.url.origin}${OPENAPI_PATH}`);
+if (!response.ok) throw new Error(`OpenAPI document answered ${response.status}`);
+const document = (await response.json()) as OpenApiDocument;
+
+const operations = Object.entries(document.paths).flatMap(([path, item]) =>
+  METHODS.filter((method) => item[method]).map((method) => {
+    const operation = item[method] as Operation;
+    const headers = (operation.parameters ?? []).filter((parameter) => parameter.in === "header").map((parameter) => parameter.name);
+    const auth = operation.security
+      ? operation.security.flatMap((requirement) => Object.keys(requirement)).join(" or ") || "optional"
+      : "optional";
+    return {
+      id: operation.operationId ?? `${method}-${path}`,
+      method: method.toUpperCase(),
+      path,
+      tag: operation.tags?.[0] ?? "other",
+      summary: operation.summary ?? "",
+      headers,
+      auth,
+      statuses: Object.keys(operation.responses ?? {}),
+    };
+  }),
+);
+const tags = (document.tags ?? []).filter((tag) => operations.some((operation) => operation.tag === tag.name));
+---
+
+<BaseLayout
+  title="API reference"
+  description="Every /api/v1 operation of the ClarkCant Marketplace REST API, with authentication and write-safety headers."
+  seo={{ markdown: false, share: false }}
+>
+  <section class="container-page py-10">
+    <h1 class="font-display text-4xl sm:text-5xl">API reference</h1>
+    <p class="mt-3 max-w-3xl text-lg text-muted">
+      {document.info.title} {document.info.version}. The machine-readable document is
+      <a class="underline" href={OPENAPI_PATH}>{OPENAPI_PATH}</a> (OpenAPI 3.1).
+    </p>
+    <ul class="mt-4 max-w-3xl list-disc space-y-1 pl-6 text-muted">
+      <li>Authenticate with <code>Authorization: Bearer &lt;token&gt;</code> (personal API token or OAuth access token) or the browser session cookie. Public reads need no credential.</li>
+      <li>Writes accept <code>Idempotency-Key</code>; a retry with the same key replays the first result for 24 hours.</li>
+      <li>Page edits require <code>If-Match</code> with the draft revision id (the page's ETag); a stale value fails with 409.</li>
+      <li>Errors share one body: <code>{"{"}"error": {"{"}"code", "message", "requestId", "details"{"}"}{"}"}</code>.</li>
+    </ul>
+
+    <nav aria-label="API sections" class="mt-6 flex flex-wrap gap-2 text-sm">
+      {tags.map((tag) => <a class="rounded border border-line px-2 py-1 hover:text-ink" href={`#tag-${tag.name}`}>{tag.name}</a>)}
+    </nav>
+
+    {
+      tags.map((tag) => (
+        <section id={`tag-${tag.name}`} class="mt-10">
+          <h2 class="font-display text-2xl">{tag.name}</h2>
+          {tag.description && <p class="mt-1 text-muted">{tag.description}</p>}
+          <div class="mt-4 overflow-x-auto">
+            <table class="w-full text-left text-sm">
+              <thead class="text-muted">
+                <tr>
+                  <th class="py-2 pr-4 font-medium">Operation</th>
+                  <th class="py-2 pr-4 font-medium">Summary</th>
+                  <th class="py-2 pr-4 font-medium">Auth</th>
+                  <th class="py-2 pr-4 font-medium">Headers</th>
+                  <th class="py-2 font-medium">Responses</th>
+                </tr>
+              </thead>
+              <tbody>
+                {operations
+                  .filter((operation) => operation.tag === tag.name)
+                  .map((operation) => (
+                    <tr id={operation.id} class="border-t border-line align-top">
+                      <td class="py-2 pr-4">
+                        <code class="font-semibold">{operation.method}</code> <code>{operation.path}</code>
+                        <div class="text-xs text-muted">{operation.id}</div>
+                      </td>
+                      <td class="py-2 pr-4">{operation.summary}</td>
+                      <td class="py-2 pr-4">{operation.auth}</td>
+                      <td class="py-2 pr-4">{operation.headers.join(", ") || "none"}</td>
+                      <td class="py-2">{operation.statuses.join(" ")}</td>
+                    </tr>
+                  ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      ))
+    }
+  </section>
+</BaseLayout>

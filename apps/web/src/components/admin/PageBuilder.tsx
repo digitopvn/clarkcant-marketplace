@@ -6,6 +6,7 @@ import {
   type OperationResult,
   type PageOperationInput,
 } from "@marketplace/page-engine/operations";
+import { markdownPathFor } from "@marketplace/seo/paths";
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 
 import { AdminApiError, adminRequest, describeError, formatDateTime, type ApiIssue } from "./admin-api";
@@ -39,6 +40,15 @@ const secondary = `${button} border border-line-strong bg-card text-ink hover:bg
 const chip = "rounded-full border border-line px-2 py-0.5 text-xs text-muted hover:border-accent hover:text-ink disabled:opacity-40";
 const inputClass =
   "w-full rounded-lg border border-line bg-card px-2.5 py-1.5 text-sm text-ink placeholder:text-faint focus:border-accent focus:outline-none";
+
+/** Sets or clears `meta.image`; an empty field removes the key so the site default card applies. */
+function withShareImage(meta: PageDocument["meta"], value: string): PageDocument["meta"] {
+  const next = { ...meta };
+  const id = value.trim();
+  if (id) next.image = id;
+  else delete next.image;
+  return next;
+}
 
 function pagePath(slug: string): string {
   return slug === "home" ? "/" : `/${slug}`;
@@ -76,7 +86,7 @@ export default function PageBuilder({ initialState, initialRevisions, blocks, la
   const layout = layouts.find((candidate) => candidate.id === doc.layout.id && candidate.version === doc.layout.version);
   const topLevelTypes = useMemo(() => new Set(layout?.regions.flatMap((region) => region.allowedBlocks) ?? []), [layout]);
   const liveUrl = `${siteUrl}${pagePath(state.page.slug)}`;
-  const markdownUrl = `/api/v1/pages/${encodeURIComponent(state.page.slug)}?format=md`;
+  const markdownUrl = `${siteUrl}${markdownPathFor(pagePath(state.page.slug))}`;
 
   const opContext: OperationContext = useMemo(
     () => ({
@@ -200,6 +210,16 @@ export default function PageBuilder({ initialState, initialRevisions, blocks, la
       await refreshRevisions();
       setNotice({ tone: "info", text: `Loaded revision ${next.draft.revision.number}, the latest draft.` });
     });
+
+  // WebMCP tools (components/webmcp) save drafts through the API, then announce it; load the new draft unless that
+  // would discard local edits (the tools refuse to write while the builder is dirty).
+  useEffect(() => {
+    const onDraftChanged = (event: Event) => {
+      if ((event as CustomEvent<{ pageId?: string }>).detail?.pageId === pageId && !dirty) void reload();
+    };
+    window.addEventListener("marketplace:page-draft-changed", onDraftChanged);
+    return () => window.removeEventListener("marketplace:page-draft-changed", onDraftChanged);
+  });
 
   const publish = () =>
     run("publish", async () => {
@@ -346,7 +366,13 @@ export default function PageBuilder({ initialState, initialRevisions, blocks, la
     `rounded-full px-3 py-1 text-sm ${active ? "bg-accent text-on-accent" : "text-muted hover:bg-accent-soft hover:text-ink"}`;
 
   return (
-    <div className="flex min-h-[calc(100vh-8rem)] flex-col">
+    <div
+      className="flex min-h-[calc(100vh-8rem)] flex-col"
+      data-webmcp-builder=""
+      data-page-id={pageId}
+      data-selected-block={selectedId ?? ""}
+      data-dirty={dirty ? "true" : "false"}
+    >
       <header className="flex flex-wrap items-center gap-3 border-b border-line px-4 py-3">
         <div className="min-w-0 flex-1">
           <p className="text-xs text-muted">
@@ -574,6 +600,19 @@ export default function PageBuilder({ initialState, initialRevisions, blocks, la
               <label className="flex items-center gap-2 text-sm">
                 <input type="checkbox" checked={doc.meta.noindex} onChange={(event) => changeDocument({ ...doc, meta: { ...doc.meta, noindex: event.target.checked } })} />
                 Ask search engines not to index this page
+              </label>
+              <label className="grid gap-1 text-xs font-medium text-muted">
+                Share image (media id)
+                <input
+                  className={inputClass}
+                  value={doc.meta.image ?? ""}
+                  maxLength={64}
+                  placeholder="Site default card"
+                  onChange={(event) => changeDocument({ ...doc, meta: withShareImage(doc.meta, event.target.value) })}
+                />
+                <span className="font-normal text-faint">
+                  Id of an uploaded PNG, JPEG, WebP or GIF (1200x630 works best). Empty uses the site default card.
+                </span>
               </label>
               <p className="text-xs text-faint">
                 Canonical URL: <span className="font-mono">{liveUrl}</span>

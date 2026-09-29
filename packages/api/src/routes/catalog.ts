@@ -31,6 +31,7 @@ const getCategoryRoute = createRoute({
   path: "/categories/{slug}",
   operationId: "getCategory",
   tags: ["catalog"],
+  summary: "One category with its public package count",
   request: { params: slugParams },
   responses: { 200: json("Category", categorySchema), ...errorResponses(400, 404, 500) },
 });
@@ -52,6 +53,7 @@ const getCollectionRoute = createRoute({
   path: "/collections/{slug}",
   operationId: "getCollection",
   tags: ["catalog"],
+  summary: "One published collection with its public packages, in editorial order",
   request: { params: slugParams },
   responses: {
     200: json("Collection with its packages", collectionDetailSchema),

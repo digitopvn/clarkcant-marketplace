@@ -63,6 +63,14 @@ export interface RequestAuth {
   credential: CredentialKind;
 }
 
+export interface ResolveRequestAuthOptions {
+  /**
+   * OAuth resource identifiers (JWT `aud`) this interface accepts. Defaults to the REST API (`<origin>/api/v1`);
+   * the MCP endpoint passes its own resource (`<origin>/mcp`) so tokens minted for it are honoured there.
+   */
+  audiences?: string[];
+}
+
 const SESSION_COOKIE = /(?:^|;\s*)(?:__Secure-)?better-auth\.session_token=/;
 
 /** True when the request presents any credential; lets hosts skip building Better Auth for anonymous traffic. */
@@ -88,14 +96,21 @@ function invalidCredential(): MarketplaceError {
  *
  * Without the header, the Better Auth session cookie yields a `user` actor with the account's full scopes.
  */
-export async function resolveRequestAuth(runtime: AuthRuntime, request: Request): Promise<RequestAuth> {
+export async function resolveRequestAuth(
+  runtime: AuthRuntime,
+  request: Request,
+  options: ResolveRequestAuthOptions = {},
+): Promise<RequestAuth> {
   const authorization = request.headers.get("authorization");
   if (authorization !== null) {
     const match = /^Bearer\s+(\S+)\s*$/i.exec(authorization);
     const token = match?.[1];
     if (!token) throw new MarketplaceError("unauthorized", "Authorization must use the Bearer scheme");
     if (token.startsWith("cmk_")) return { actor: await actorFromApiToken(runtime, token), credential: "api_token" };
-    if (token.split(".").length === 3) return { actor: await actorFromOAuthToken(runtime, token), credential: "oauth" };
+    if (token.split(".").length === 3) {
+      const audience = options.audiences ?? [apiAudience(runtime.origin)];
+      return { actor: await actorFromOAuthToken(runtime, token, audience), credential: "oauth" };
+    }
     const session = await runtime.auth.api.getSession({ headers: new Headers({ authorization: `Bearer ${token}` }) });
     if (!session) throw invalidCredential();
     return { actor: await actorFromAccount(runtime, session.user, { allowAdmin: false }), credential: "session_bearer" };
@@ -152,12 +167,12 @@ async function actorFromApiToken(runtime: AuthRuntime, token: string): Promise<A
   };
 }
 
-async function actorFromOAuthToken(runtime: AuthRuntime, token: string): Promise<Actor> {
+async function actorFromOAuthToken(runtime: AuthRuntime, token: string, audience: string[]): Promise<Actor> {
   let payload: Awaited<ReturnType<typeof verifyJwsAccessToken>>;
   try {
     payload = await verifyJwsAccessToken(token, {
       jwksFetch: async () => runtime.auth.api.getJwks(),
-      verifyOptions: { issuer: `${runtime.origin}${AUTH_BASE_PATH}`, audience: apiAudience(runtime.origin) },
+      verifyOptions: { issuer: `${runtime.origin}${AUTH_BASE_PATH}`, audience },
     });
   } catch {
     throw invalidCredential();

@@ -4,8 +4,11 @@ import { describeBlocks, getPage, listLayouts, listPageRevisions, type PageState
 import { BLOCK_STYLES } from "@marketplace/page-engine";
 
 import PageBuilder from "../../../components/admin/PageBuilder";
+import { CANVAS_SCRIPT } from "../../../components/admin/canvas-document";
+import WebmcpBuilderTools from "../../../components/webmcp/WebmcpBuilderTools.astro";
 import BaseLayout from "../../../layouts/BaseLayout.astro";
 import tokensCss from "../../../styles/tokens.css?raw";
+import { allowInlineScripts } from "../../../server/csp";
 import { createRequestContext } from "../../../server/request-context";
 
 export const prerender = false;
@@ -27,6 +30,11 @@ Astro.response.headers.set("X-Robots-Tag", "noindex");
 
 // Layout definitions hold readonly arrays; the island receives plain JSON copies.
 const layouts = listLayouts().map((layout) => ({ ...layout, regions: layout.regions.map((region) => ({ ...region, allowedBlocks: [...region.allowedBlocks] })) }));
+
+// The canvas iframe (srcdoc) inherits this page's CSP; allow exactly its inline script here. Its inline style is
+// fixed at build time and allowed in astro.config.ts, which hashes this same `canvasStyle(tokens + BLOCK_STYLES)`.
+const canvasCss = `${tokensCss}\n${BLOCK_STYLES}`;
+await allowInlineScripts(Astro.csp, CANVAS_SCRIPT);
 ---
 
 <BaseLayout title={state ? `Edit ${state.draft.document.meta.title} · Admin` : "Page not found · Admin"}>
@@ -39,7 +47,7 @@ const layouts = listLayouts().map((layout) => ({ ...layout, regions: layout.regi
         blocks={describeBlocks()}
         layouts={layouts}
         siteUrl={vars.PUBLIC_SITE_URL}
-        canvasCss={`${tokensCss}\n${BLOCK_STYLES}`}
+        canvasCss={canvasCss}
       />
     ) : (
       <section class="container-page py-16">
@@ -50,4 +58,5 @@ const layouts = listLayouts().map((layout) => ({ ...layout, regions: layout.regi
       </section>
     )
   }
+  {state && <WebmcpBuilderTools />}
 </BaseLayout>

@@ -1,4 +1,4 @@
-import { blockNodeSchema, blockTypeSchema, type BlockNode, type PageDocument } from "@marketplace/contracts";
+import { blockNodeSchema, blockTypeSchema, mediaIdSchema, type BlockNode, type PageDocument } from "@marketplace/contracts";
 import { z } from "zod";
 
 /*
@@ -53,6 +53,8 @@ export const pageSeoPatchSchema = z
     description: z.string().max(500).optional(),
     locale: z.string().min(2).max(35).optional(),
     noindex: z.boolean().optional(),
+    /** Media id of the share image; `null` removes it so the default card applies again. */
+    image: mediaIdSchema.nullable().optional(),
   })
   .refine((seo) => Object.keys(seo).length > 0, { error: "set at least one SEO field" });
 
@@ -169,7 +171,10 @@ function applyOne(document: PageDocument, operation: PageOperation, index: numbe
       return { op: operation.op, blockId: operation.blockId };
     }
     case "set_page_seo": {
-      document.meta = { ...document.meta, ...operation.seo };
+      const { image, ...fields } = operation.seo;
+      document.meta = { ...document.meta, ...fields };
+      if (image === null) delete document.meta.image;
+      else if (image !== undefined) document.meta.image = image;
       return { op: operation.op };
     }
     case "set_layout": {

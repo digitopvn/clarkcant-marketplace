@@ -76,4 +76,52 @@
     background: var(--spectrum);
     filter: var(--spectrum-filter);
   }
+
+  .site-menu > summary::-webkit-details-marker {
+    display: none;
+  }
+
+  .consent-banner {
+    position: fixed;
+    inset-inline: 0;
+    bottom: 0;
+    z-index: 40;
+    border-top: 1px solid var(--line-strong);
+    background: var(--bg-raised);
+    box-shadow: var(--shadow);
+  }
+
+  .consent-banner[hidden] {
+    display: none;
+  }
+
+  .consent-button,
+  .chrome-button {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    border: 1px solid var(--line-strong);
+    border-radius: 999px;
+    padding: 0.375rem 0.875rem;
+    font-size: 0.875rem;
+    color: var(--text);
+    background: var(--card);
+    cursor: pointer;
+  }
+
+  .consent-button:hover,
+  .chrome-button:hover {
+    background: var(--accent-soft);
+  }
+
+  .consent-button-primary {
+    border-color: var(--accent);
+    background: var(--accent);
+    color: var(--on-accent);
+  }
+
+  .consent-button-primary:hover {
+    background: var(--accent);
+    filter: brightness(1.08);
+  }
 }

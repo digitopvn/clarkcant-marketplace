@@ -4,7 +4,10 @@ import { absoluteUrl, escapeHtml } from "./html";
 import { assignRegions, getLayout } from "./layouts";
 import { escapeMarkdown, joinMarkdown, mdHeading } from "./markdown-text";
 import { getBlock } from "./registry";
-import type { RenderOptions, RenderedBlock, RenderedPage } from "./types";
+import type { MediaAsset, RenderOptions, RenderedBlock, RenderedPage } from "./types";
+
+/** Formats social platforms render as a card image (SVG is not accepted by the major unfurlers). */
+const SOCIAL_IMAGE_TYPES = new Set(["image/png", "image/jpeg", "image/webp", "image/gif"]);
 
 const EMPTY: RenderedBlock = { html: "", markdown: "", summary: "", structuredData: [], diagnostics: [] };
 
@@ -67,6 +70,8 @@ export async function renderPage(document: PageDocument, options: RenderOptions)
     ...rendered.flatMap((block) => block.structuredData),
   ];
 
+  const socialImage = await resolveSocialImage(document, options, diagnostics);
+
   const summaryLines = rendered.map((block) => block.summary).filter((line) => line.length > 0);
   const summary = [
     `Page "${document.meta.title}" at ${pageUrl}${layout ? ` (${layout.label} layout)` : ""}.`,
@@ -76,7 +81,22 @@ export async function renderPage(document: PageDocument, options: RenderOptions)
     .filter((line) => line.length > 0)
     .join("\n");
 
-  return { html, markdown, structuredData, summary, diagnostics };
+  return { html, markdown, structuredData, summary, diagnostics, socialImage };
+}
+
+async function resolveSocialImage(document: PageDocument, options: RenderOptions, diagnostics: string[]): Promise<MediaAsset | null> {
+  const id = document.meta.image;
+  if (!id) return null;
+  const media = await options.port.getMedia(id);
+  if (!media) {
+    diagnostics.push(`share image "${id}" is not an uploaded media object`);
+    return null;
+  }
+  if (!SOCIAL_IMAGE_TYPES.has(media.contentType)) {
+    diagnostics.push(`share image "${id}" is ${media.contentType}; use a PNG, JPEG, WebP or GIF image`);
+    return null;
+  }
+  return media;
 }
 
 async function renderNode(node: BlockNode, options: RenderOptions): Promise<RenderedBlock> {
