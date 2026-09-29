@@ -1,0 +1,33 @@
+---
+import ThemeToggle from "./ThemeToggle";
+
+const path = Astro.url.pathname;
+const links = [
+  { href: "/packages", label: "Packages" },
+  { href: "/openapi.json", label: "API" },
+];
+---
+
+<header class="border-b border-line">
+  <div class="container-page flex items-center justify-between gap-4 py-4">
+    <a href="/" class="flex items-baseline gap-2 text-ink no-underline">
+      <span class="font-display text-2xl leading-none">ClarkCant</span>
+      <span class="text-sm text-muted">Marketplace</span>
+    </a>
+    <nav aria-label="Primary" class="flex items-center gap-1 text-sm">
+      {
+        links.map((link) => (
+          <a
+            href={link.href}
+            class="rounded-full px-3 py-1.5 text-muted hover:bg-accent-soft hover:text-ink"
+            aria-current={path.startsWith(link.href) ? "page" : undefined}
+          >
+            {link.label}
+          </a>
+        ))
+      }
+      <ThemeToggle client:idle />
+    </nav>
+  </div>
+  <div class="spectrum-rule" aria-hidden="true"></div>
+</header>

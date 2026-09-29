@@ -1,0 +1,53 @@
+---
+import "../styles/global.css";
+
+import SiteFooter from "../components/SiteFooter.astro";
+import SiteHeader from "../components/SiteHeader.astro";
+
+interface Props {
+  title: string;
+  description?: string;
+}
+
+const { title, description = "Discover and curate ClarkCant packages distributed through npm." } = Astro.props;
+const pageTitle = title === "ClarkCant Marketplace" ? title : `${title} · ClarkCant Marketplace`;
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{pageTitle}</title>
+    <meta name="description" content={description} />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="theme-color" content="#f6f5f2" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#0c0d11" media="(prefers-color-scheme: dark)" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&family=Instrument+Serif:ital@0;1&display=swap"
+    />
+    {/* Applies an explicit theme choice before first paint, so a stored preference never flashes the other theme. */}
+    <script is:inline>
+      (() => {
+        try {
+          const theme = localStorage.getItem("theme");
+          if (theme === "light" || theme === "dark") document.documentElement.dataset.theme = theme;
+        } catch {
+          /* Storage can be unavailable (privacy modes); the system preference applies. */
+        }
+      })();
+    </script>
+  </head>
+  <body class="min-h-screen flex flex-col bg-bg text-ink">
+    <a class="skip-link" href="#main">Skip to content</a>
+    <SiteHeader />
+    <main id="main" tabindex="-1" class="flex-1 focus:outline-none">
+      <slot />
+    </main>
+    <SiteFooter />
+  </body>
+</html>

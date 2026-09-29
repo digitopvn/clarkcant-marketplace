@@ -1,0 +1,22 @@
+{
+  "name": "@marketplace/db",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "auth:schema": "auth generate --config scripts/auth-schema.config.ts --output src/schema/auth.ts --adapter drizzle --dialect sqlite --yes",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "drizzle-orm": "0.45.3"
+  },
+  "devDependencies": {
+    "@better-auth/oauth-provider": "1.7.6",
+    "@better-auth/passkey": "1.7.6",
+    "auth": "1.7.6",
+    "better-auth": "1.7.6"
+  }
+}

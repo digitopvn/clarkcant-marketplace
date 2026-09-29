@@ -1,0 +1,96 @@
+// Web Worker: Astro SSR, the public REST API (/api/v1/*) and /openapi.json.
+//
+// The top level is the local development configuration used by `astro dev` (local state only). Deploys select an
+// environment at build time: `CLOUDFLARE_ENV=staging astro build && wrangler deploy` (the `--env` flag is ignored
+// for this Worker because the build writes a flattened config). Bindings are not inherited by environments, so
+// every environment repeats all of them. INDEX_WORKFLOW points at the jobs Worker, which must be deployed first.
+{
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "clarkcant-marketplace-web-local",
+  "compatibility_date": "2026-08-15",
+  "compatibility_flags": ["nodejs_compat"],
+  "observability": { "enabled": true },
+  "vars": {
+    "PUBLIC_SITE_URL": "http://localhost:4321",
+    "ENVIRONMENT": "development",
+    "ADMIN_EMAILS": ""
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "clarkcant-marketplace-db-staging",
+      "database_id": "8e992426-e304-417f-ad62-631a3bedbdb2",
+      "migrations_dir": "../../migrations"
+    }
+  ],
+  "r2_buckets": [{ "binding": "MEDIA", "bucket_name": "clarkcant-marketplace-media-staging" }],
+  "queues": {
+    "producers": [{ "binding": "INGEST_QUEUE", "queue": "clarkcant-marketplace-ingest-staging" }]
+  },
+  "workflows": [
+    {
+      "name": "clarkcant-marketplace-index-local",
+      "binding": "INDEX_WORKFLOW",
+      "class_name": "IndexPackageWorkflow",
+      "script_name": "clarkcant-marketplace-jobs-local"
+    }
+  ],
+  "env": {
+    "staging": {
+      "name": "clarkcant-marketplace-web-staging",
+      "vars": {
+        // Deployed web origin (workers.dev until a custom domain is chosen). ADMIN_EMAILS is a wrangler secret per env.
+        "PUBLIC_SITE_URL": "https://clarkcant-marketplace-web-staging.digitop-vn.workers.dev",
+        "ENVIRONMENT": "staging"
+      },
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "clarkcant-marketplace-db-staging",
+          "database_id": "8e992426-e304-417f-ad62-631a3bedbdb2",
+          "migrations_dir": "../../migrations"
+        }
+      ],
+      "r2_buckets": [{ "binding": "MEDIA", "bucket_name": "clarkcant-marketplace-media-staging" }],
+      "queues": {
+        "producers": [{ "binding": "INGEST_QUEUE", "queue": "clarkcant-marketplace-ingest-staging" }]
+      },
+      "workflows": [
+        {
+          "name": "clarkcant-marketplace-index-staging",
+          "binding": "INDEX_WORKFLOW",
+          "class_name": "IndexPackageWorkflow",
+          "script_name": "clarkcant-marketplace-jobs-staging"
+        }
+      ]
+    },
+    "production": {
+      "name": "clarkcant-marketplace-web",
+      "vars": {
+        // Deployed web origin; see the staging note.
+        "PUBLIC_SITE_URL": "https://clarkcant-marketplace-web.digitop-vn.workers.dev",
+        "ENVIRONMENT": "production"
+      },
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "clarkcant-marketplace-db",
+          "database_id": "243263e2-442e-4152-976f-0d0a7845eae7",
+          "migrations_dir": "../../migrations"
+        }
+      ],
+      "r2_buckets": [{ "binding": "MEDIA", "bucket_name": "clarkcant-marketplace-media" }],
+      "queues": {
+        "producers": [{ "binding": "INGEST_QUEUE", "queue": "clarkcant-marketplace-ingest" }]
+      },
+      "workflows": [
+        {
+          "name": "clarkcant-marketplace-index",
+          "binding": "INDEX_WORKFLOW",
+          "class_name": "IndexPackageWorkflow",
+          "script_name": "clarkcant-marketplace-jobs"
+        }
+      ]
+    }
+  }
+}

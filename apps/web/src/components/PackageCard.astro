@@ -1,0 +1,34 @@
+---
+import type { PackageSummary } from "@marketplace/contracts";
+
+interface Props {
+  pkg: PackageSummary;
+}
+
+const { pkg } = Astro.props;
+const npmUrl = `https://www.npmjs.com/package/${pkg.name}`;
+---
+
+<article class="flex h-full flex-col gap-3 rounded-card border border-line bg-card p-5 shadow-card">
+  <div class="flex items-start justify-between gap-3">
+    <h3 class="font-display text-2xl leading-tight">{pkg.displayName}</h3>
+    {
+      pkg.curationStatus === "featured" && (
+        <span class="shrink-0 rounded-full bg-accent-soft px-2.5 py-0.5 text-xs text-accent">Featured</span>
+      )
+    }
+  </div>
+  <p class="font-mono text-xs text-faint break-all">
+    {pkg.name}{pkg.latestVersion && <span> · v{pkg.latestVersion}</span>}
+  </p>
+  {pkg.description ? <p class="text-sm text-muted">{pkg.description}</p> : <p class="text-sm text-faint">No description provided.</p>}
+  <div class="mt-auto flex flex-wrap items-center justify-between gap-2 pt-2 text-xs text-muted">
+    <span>
+      {pkg.publisher ? pkg.publisher.name : "Unclaimed publisher"}
+      {pkg.publisher?.verified && <span class="text-success"> · verified</span>}
+    </span>
+    <a href={npmUrl} rel="noopener" class="text-accent underline-offset-4 hover:underline">
+      View on npm<span class="sr-only"> ({pkg.name})</span>
+    </a>
+  </div>
+</article>

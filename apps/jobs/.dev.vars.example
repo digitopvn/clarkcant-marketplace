@@ -1,0 +1,9 @@
+# Names only. Copy to `.dev.vars` (git-ignored) to override wrangler.jsonc vars during `pnpm dev`.
+# Deployed environments set secrets with `wrangler secret put <NAME> --env <env>`, never in files.
+
+# Public origin used for absolute links, e.g. http://localhost:4321
+PUBLIC_SITE_URL=
+# development | staging | production
+ENVIRONMENT=
+# Comma-separated admin email allowlist
+ADMIN_EMAILS=

@@ -1,0 +1,26 @@
+{
+  "id": "com.example.chart-tools",
+  "version": "2.1.0",
+  "hostApi": { "min": 1, "max": 2 },
+  "facets": [
+    {
+      "kind": "ui",
+      "entry": "widgets/chart/index.html",
+      "isolation": "isolated-ui",
+      "widgetId": "com.example.chart@1",
+      "renderer": "isolated-app"
+    },
+    { "kind": "tools", "entry": "tools/index.js", "isolation": "service" }
+  ],
+  "requestedCapabilities": ["data.read@1"],
+  "permissions": {
+    "networkOrigins": ["https://api.example.com"],
+    "filesystem": [{ "path": "cache", "access": "write" }],
+    "microphone": false,
+    "camera": false,
+    "lifecycleScripts": []
+  },
+  "platforms": ["web", "linux-x64"],
+  "publisher": { "id": "example", "sourceUrl": "https://github.com/example/chart-tools", "license": "MIT" },
+  "dependencies": []
+}
