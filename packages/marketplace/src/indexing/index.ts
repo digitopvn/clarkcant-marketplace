@@ -13,6 +13,8 @@ export {
 export {
   DISCOVERY_KEYWORDS,
   MAX_QUEUED_PER_RUN,
+  MAX_TRANSIENT_FAILURES,
+  TRANSIENT_RETRY_INTERVAL_MS,
   discoverNpmPackages,
   handleIngestMessage,
   type DiscoverOptions,

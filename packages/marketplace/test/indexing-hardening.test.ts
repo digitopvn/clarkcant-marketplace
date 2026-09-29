@@ -1,11 +1,14 @@
 import type { IngestMessage } from "@marketplace/contracts";
-import { packageSubmissions } from "@marketplace/db";
+import { auditEvents, packageSubmissions, packages } from "@marketplace/db";
 import { env } from "cloudflare:workers";
+import { eq } from "drizzle-orm";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import {
   MAX_QUEUED_PER_RUN,
   MAX_README_BYTES,
+  MAX_TRANSIENT_FAILURES,
+  TRANSIENT_RETRY_INTERVAL_MS,
   MAX_README_HTML_BYTES,
   compareSemver,
   createLocalRegistryFetch,
@@ -87,6 +90,33 @@ describe("discovery", () => {
     expect(explicit.created).toBe(true);
   });
 
+  it("resubmits a transient failure once it is a day old, and gives up after repeated failures", async () => {
+    const now = deps.now().getTime();
+    const failed = (name: string, error: string, ageMs: number) => {
+      const at = new Date(now - ageMs);
+      return { id: deps.ids("sub"), packageName: name, version: "1.0.0", status: "failed" as const, error, createdAt: at, updatedAt: at };
+    };
+    const transient = "indexing failed after retries: R2 unavailable";
+    const dayAndABit = TRANSIENT_RETRY_INTERVAL_MS + 60_000;
+    await deps.db.insert(packageSubmissions).values([
+      failed("@acme/flaky-old", transient, dayAndABit),
+      failed("@acme/flaky-recent", transient, 60_000),
+      failed("@acme/rejected-old", "integrity_mismatch: sha512 does not match", dayAndABit),
+      ...Array.from({ length: MAX_TRANSIENT_FAILURES }, (_, index) =>
+        failed("@acme/flaky-hopeless", transient, dayAndABit * (index + 1)),
+      ),
+    ]);
+    const { queue, sent } = recordingQueue();
+    const registry = searchOnlyRegistry(
+      ["@acme/flaky-old", "@acme/flaky-recent", "@acme/rejected-old", "@acme/flaky-hopeless"].map((name) => ({ name, version: "1.0.0" })),
+    );
+
+    expect(await discoverNpmPackages({ ...deps, queue }, { registry })).toEqual({ seen: 4, queued: 1, pending: 0 });
+    expect(sent.map((message) => message.type === "index-package" && message.packageName)).toEqual(["@acme/flaky-old"]);
+    // The new submission is queued, so the next run does not submit it again.
+    expect(await discoverNpmPackages({ ...deps, queue }, { registry })).toMatchObject({ queued: 0 });
+  });
+
   it("stays within D1's per-invocation query budget and continues on the next run", async () => {
     const hits = Array.from({ length: 2000 }, (_, index) => ({ name: `@bulk/pkg-${index}`, version: "1.0.0" }));
     const registry = searchOnlyRegistry(hits);
@@ -138,6 +168,43 @@ describe("latest version", () => {
     ).resolves.toMatchObject({ status: "indexed", version: "1.0.0" });
 
     expect((await getPackage(deps, FIXTURE_NAME)).latestVersion).toBe("1.1.0");
+  });
+
+  it("writes nothing in finalize when the pointer moves between its read and its batch", async () => {
+    const registry = await fixtureRegistry([{ variant: "valid" }]);
+    const actor = await createAccount(deps);
+    const { submission } = await submitPackage(deps, actor, { name: FIXTURE_NAME }, { enqueue: false });
+    // A concurrent run moves the pointer just before finalize commits.
+    let armed = false;
+    const db = new Proxy(deps.db, {
+      get(target, property) {
+        if (property === "batch" && armed) {
+          return async (statements: Parameters<typeof target.batch>[0]) => {
+            armed = false;
+            await target.update(packages).set({ latestVersion: "9.9.9" }).where(eq(packages.name, FIXTURE_NAME));
+            return target.batch(statements);
+          };
+        }
+        const value: unknown = Reflect.get(target, property, target);
+        return typeof value === "function" ? (value as (...args: unknown[]) => unknown).bind(target) : value;
+      },
+    });
+    const runStep: StepRunner = (name, run) => {
+      if (name === "finalize") armed = true;
+      return run();
+    };
+
+    await expect(
+      indexPackage({ ...deps, db }, { submissionId: submission.id, packageName: FIXTURE_NAME }, { registry, runStep }),
+    ).rejects.toThrow(/changed during finalize/);
+
+    const [listing] = await deps.db.select().from(packages).where(eq(packages.name, FIXTURE_NAME));
+    expect(listing?.latestVersion).toBe("9.9.9");
+    const indexedEvents = await deps.db.select().from(auditEvents).where(eq(auditEvents.action, "package.indexed"));
+    expect(indexedEvents.filter((event) => event.data?.submissionId === submission.id)).toHaveLength(0);
+    // The inline runner has no retries, so the failure is recorded instead of an `indexed` status.
+    const [row] = await deps.db.select().from(packageSubmissions).where(eq(packageSubmissions.id, submission.id));
+    expect(row?.status).toBe("failed");
   });
 });
 

@@ -15,19 +15,37 @@ export class IndexingRejectedError extends Error {
   }
 }
 
-export type IndexingRejectionCode =
-  | "package_not_found"
-  | "version_not_found"
-  | "invalid_packument"
-  | "missing_integrity"
-  | "integrity_mismatch"
-  | "tarball_too_large"
-  | "invalid_tarball"
-  | "manifest_missing"
-  | "manifest_invalid"
-  | "manifest_mismatch"
-  | "untrusted_tarball_url";
+export const INDEXING_REJECTION_CODES = [
+  "package_not_found",
+  "version_not_found",
+  "invalid_packument",
+  "missing_integrity",
+  "integrity_mismatch",
+  "tarball_too_large",
+  "invalid_tarball",
+  "manifest_missing",
+  "manifest_invalid",
+  "manifest_mismatch",
+  "untrusted_tarball_url",
+] as const;
+
+export type IndexingRejectionCode = (typeof INDEXING_REJECTION_CODES)[number];
 
 export function isIndexingRejection(error: unknown): error is IndexingRejectedError {
   return error instanceof IndexingRejectedError;
+}
+
+/** The error text a rejected submission is stored with: the code, then the reason. */
+export function rejectionErrorText(code: IndexingRejectionCode, message: string): string {
+  return `${code}: ${message}`;
+}
+
+const REJECTION_PREFIXES = INDEXING_REJECTION_CODES.map((code) => `${code}: `);
+
+/**
+ * Whether a failed submission's stored error records a deterministic rejection (see {@link rejectionErrorText}) rather
+ * than a transient failure that ran out of retries.
+ */
+export function isRejectionErrorText(error: string | null): boolean {
+  return error !== null && REJECTION_PREFIXES.some((prefix) => error.startsWith(prefix));
 }

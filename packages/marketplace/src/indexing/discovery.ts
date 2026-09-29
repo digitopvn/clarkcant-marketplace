@@ -5,6 +5,7 @@ import { and, eq, inArray, isNotNull } from "drizzle-orm";
 import { chunked } from "../d1-limits";
 import type { MarketplaceDeps } from "../deps";
 import { INDEXER_ACTOR, indexPackage, type IndexPackageOptions, type IndexPackageParams } from "./index-package";
+import { isRejectionErrorText } from "./indexing-errors";
 import { createNpmRegistry, type NpmRegistry, type NpmSearchHit } from "./npm-registry";
 import { createSystemSubmission, enqueueIngest } from "./submissions";
 
@@ -44,7 +45,8 @@ async function searchKeyword(registry: NpmRegistry, keyword: string): Promise<Np
 
 /**
  * Polls npm search for ClarkCant keywords and queues a submission for every (name, latest version) the marketplace
- * has not indexed, is not indexing and has not failed to index (see {@link handledVersions}). Hits with an invalid
+ * has not indexed, is not indexing, has not rejected, and has not recently failed to index (see
+ * {@link handledVersions}). Hits with an invalid
  * name or version are ignored: search results are untrusted input.
  */
 export async function discoverNpmPackages(
@@ -86,14 +88,24 @@ export async function discoverNpmPackages(
 
 const coordinate = (name: string, version: string) => `${name}@${version}`;
 
+/** A version whose indexing failed transiently is submitted again at most once per this interval. */
+export const TRANSIENT_RETRY_INTERVAL_MS = 24 * 60 * 60 * 1000;
+/** Transient failures after which discovery stops resubmitting a version; a person can still resubmit it. */
+export const MAX_TRANSIENT_FAILURES = 5;
+
 /**
- * The `name@version` coordinates discovery must not submit again: versions already indexed, versions with a
- * submission still in flight, and versions whose submission failed. A version is immutable, so a failure (rejected
- * manifest, integrity mismatch, or retries exhausted) would only repeat; a person resubmits explicitly instead.
+ * The `name@version` coordinates discovery must not submit now:
+ * - versions already indexed, or with a submission still queued or indexing;
+ * - versions rejected deterministically (invalid manifest, integrity mismatch, oversized tarball, ...). A version is
+ *   immutable, so a rejection would only repeat; a person resubmits explicitly instead;
+ * - versions whose indexing failed transiently (npm, R2 or CPU trouble outlasting the retries) within the last
+ *   {@link TRANSIENT_RETRY_INTERVAL_MS}, or {@link MAX_TRANSIENT_FAILURES} times in all. Older transient failures
+ *   become eligible again, so a short outage does not hide a version from discovery for good.
  * Names are looked up in chunks, a fixed handful of queries per run however many hits npm returns.
  */
 async function handledVersions(deps: MarketplaceDeps, names: string[]): Promise<Set<string>> {
   const handled = new Set<string>();
+  const retryBefore = deps.now().getTime() - TRANSIENT_RETRY_INTERVAL_MS;
   for (const chunk of chunked(names)) {
     const [indexed, submitted] = await Promise.all([
       deps.db
@@ -102,7 +114,13 @@ async function handledVersions(deps: MarketplaceDeps, names: string[]): Promise<
         .innerJoin(packages, eq(packages.id, packageVersions.packageId))
         .where(inArray(packages.name, chunk)),
       deps.db
-        .selectDistinct({ name: packageSubmissions.packageName, version: packageSubmissions.version })
+        .select({
+          name: packageSubmissions.packageName,
+          version: packageSubmissions.version,
+          status: packageSubmissions.status,
+          error: packageSubmissions.error,
+          updatedAt: packageSubmissions.updatedAt,
+        })
         .from(packageSubmissions)
         .where(
           and(
@@ -112,8 +130,18 @@ async function handledVersions(deps: MarketplaceDeps, names: string[]): Promise<
           ),
         ),
     ]);
-    for (const row of [...indexed, ...submitted]) {
-      if (row.version !== null) handled.add(coordinate(row.name, row.version));
+    for (const row of indexed) handled.add(coordinate(row.name, row.version));
+    const transientFailures = new Map<string, number>();
+    for (const row of submitted) {
+      if (row.version === null) continue;
+      const key = coordinate(row.name, row.version);
+      if (row.status !== "failed" || isRejectionErrorText(row.error) || row.updatedAt.getTime() > retryBefore) {
+        handled.add(key);
+        continue;
+      }
+      const failures = (transientFailures.get(key) ?? 0) + 1;
+      transientFailures.set(key, failures);
+      if (failures >= MAX_TRANSIENT_FAILURES) handled.add(key);
     }
   }
   return handled;

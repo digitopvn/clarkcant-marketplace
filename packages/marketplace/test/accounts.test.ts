@@ -21,7 +21,7 @@ import {
 } from "@marketplace/db";
 import { and, eq } from "drizzle-orm";
 import { env } from "cloudflare:workers";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import {
   createApiToken,
@@ -118,6 +118,22 @@ describe("API tokens", () => {
     const admin = await seedAccount(deps, { email: uniqueEmail("admin"), admin: true });
     const adminToken = await createApiToken(deps, admin, { name: "builder", scopes: ["pages:write", "pages:publish"] });
     expect(adminToken.scopes).toEqual(["pages:write", "pages:publish"]);
+  });
+
+  it("lets only a signed-in session create or revoke tokens, whatever the caller", async () => {
+    const account = await seedAccount(deps, { email: uniqueEmail("session-only") });
+    const created = await createApiToken(deps, account, { name: "mine", scopes: ["account:read"] });
+    const sessionRequired = (error: unknown) =>
+      error instanceof MarketplaceError &&
+      error.code === "forbidden" &&
+      (error.details as { reason?: string } | undefined)?.reason === "session_required";
+
+    // Even a token holding every scope the account has, or an OAuth grant, cannot mint or revoke tokens.
+    for (const token of [tokenActor(account, account.scopes), tokenActor(account, ["account:write", "account:read"], "oauth:desktop")]) {
+      await expect(createApiToken(deps, token, { name: "x", scopes: ["account:read"] })).rejects.toSatisfy(sessionRequired);
+      await expect(revokeApiToken(deps, token, created.id)).rejects.toSatisfy(sessionRequired);
+    }
+    expect((await listApiTokens(deps, account)).find((token) => token.id === created.id)?.revokedAt).toBeNull();
   });
 
   it("does not let one account revoke another's token", async () => {
@@ -269,6 +285,37 @@ describe("account deletion", () => {
       .where(and(eq(auditEvents.action, "account.deleted"), eq(auditEvents.subjectId, account.userId)));
     expect(audit).toHaveLength(1);
     expect(JSON.stringify(audit[0]?.data)).not.toContain("@example.test");
+  });
+
+  it("still succeeds when the search re-sync after the committed deletion fails, and logs it", async () => {
+    const account = await seedAccount(deps, { email: uniqueEmail("delete-sync") });
+    const solo = await createPublisher(deps, account, { slug: `sync-${Date.now().toString(36)}`, name: "Sync" });
+    const packageId = await seedPackage(deps, { name: `@sync/pkg-${Date.now().toString(36)}` });
+    await deps.db.update(packages).set({ publisherId: solo.id }).where(eq(packages.id, packageId));
+
+    // The deletion's own batch runs; every later batch (the search re-sync) fails.
+    let batches = 0;
+    const db = new Proxy(deps.db, {
+      get(target, property) {
+        if (property === "batch") {
+          return (statements: Parameters<typeof target.batch>[0]) => {
+            batches += 1;
+            return batches === 1 ? target.batch(statements) : Promise.reject(new Error("D1 unavailable"));
+          };
+        }
+        const value: unknown = Reflect.get(target, property, target);
+        return typeof value === "function" ? (value as (...args: unknown[]) => unknown).bind(target) : value;
+      },
+    });
+    const logged = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    try {
+      await expect(deleteAccount({ ...deps, db }, account)).resolves.toMatchObject({ deleted: true });
+      expect(batches).toBe(2);
+      expect(logged).toHaveBeenCalledWith(expect.stringContaining(packageId), expect.any(Error));
+    } finally {
+      logged.mockRestore();
+    }
+    expect(await deps.db.select().from(user).where(eq(user.id, account.userId))).toEqual([]);
   });
 
   it("refuses token credentials and refuses to orphan a team publisher", async () => {

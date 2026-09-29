@@ -19,6 +19,7 @@ import { and, desc, eq, isNull } from "drizzle-orm";
 import { prepareAuditEvent } from "../audit/audit-writer";
 import type { MarketplaceDeps } from "../deps";
 import { parseInput } from "../validation";
+import { requireSignedInSession } from "./session-guards";
 
 type ApiTokenRow = typeof apiTokens.$inferSelect;
 
@@ -46,8 +47,9 @@ export function isApiTokenFormat(value: string): boolean {
 }
 
 /**
- * Creates a token whose scopes must be a subset of what the creating credential holds right now, so a token can
- * never widen access. Creating tokens needs `account:write`; a token cannot mint tokens beyond its own grant.
+ * Creates a token whose scopes must be a subset of what the creating session holds right now, so a token can never
+ * widen access. Needs `account:write` and a signed-in session: tokens outlive the credential that creates them (up to
+ * a year) and are not revoked with it, so no token (`cmk_…` or OAuth) may mint one.
  */
 export async function createApiToken(
   deps: MarketplaceDeps,
@@ -56,6 +58,7 @@ export async function createApiToken(
 ): Promise<CreatedApiToken> {
   requireScope(actor, "account:write");
   const userId = requireUser(actor);
+  requireSignedInSession(actor, "Creating an API token");
   const { name, scopes, expiresInDays } = parseInput(createApiTokenInputSchema, input);
 
   const excess = scopes.filter((scope) => !hasScope(actor.scopes, scope));
@@ -106,10 +109,14 @@ export async function listApiTokens(deps: MarketplaceDeps, actor: Actor): Promis
   return rows.map(toApiToken);
 }
 
-/** Revokes one of the caller's tokens. Revoking an already revoked token is a no-op that returns it unchanged. */
+/**
+ * Revokes one of the caller's tokens (signed-in session only, like creation). Revoking an already revoked token is a
+ * no-op that returns it unchanged.
+ */
 export async function revokeApiToken(deps: MarketplaceDeps, actor: Actor, tokenId: string): Promise<ApiToken> {
   requireScope(actor, "account:write");
   const userId = requireUser(actor);
+  requireSignedInSession(actor, "Revoking an API token");
   const [row] = await deps.db
     .select()
     .from(apiTokens)

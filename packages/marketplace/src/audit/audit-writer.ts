@@ -24,7 +24,7 @@ export function prepareAuditEvent(deps: MarketplaceDeps, input: AuditEventInput)
     data: event.data ?? null,
     createdAt: deps.now(),
   };
-  return { event: toAuditEvent(row), statement: deps.db.insert(auditEvents).values(row) };
+  return { event: toAuditEvent(row), row, statement: deps.db.insert(auditEvents).values(row) };
 }
 
 /** Records one audit event on its own. Prefer `prepareAuditEvent` inside a batch when a command also writes. */

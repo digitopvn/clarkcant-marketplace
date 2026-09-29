@@ -92,6 +92,25 @@ describe("rate limit buckets", () => {
     expect(rateLimitKey(new Request("https://market.example/api/v1/me"), "api")).toBe("api:ip:unknown");
   });
 
+  it("keys IPv6 callers by their /64, so rotating addresses inside it shares one budget", () => {
+    const key = (ip: string) =>
+      rateLimitKey(new Request("https://market.example/api/v1/search", { headers: { "cf-connecting-ip": ip } }), "search");
+    for (const ip of [
+      "2001:db8:0:1::1",
+      "2001:0db8:0000:0001:aaaa:bbbb:cccc:dddd",
+      "2001:DB8:0:1:ffff::",
+      "2001:db8:0:1:1:2:3.4.5.6",
+    ]) {
+      expect(key(ip)).toBe("search:ip:2001:db8:0:1::/64");
+    }
+    expect(key("2001:db8:0:2::1")).toBe("search:ip:2001:db8:0:2::/64");
+    expect(key("2001:db8::1")).toBe("search:ip:2001:db8:0:0::/64");
+    expect(key("::1")).toBe("search:ip:0:0:0:0::/64");
+    expect(key("::ffff:203.0.113.9")).toBe("search:ip:203.0.113.9");
+    // Values that are not IPv6 are passed through rather than collapsed into a shared key.
+    expect(key("2001:db8::1::2")).toBe("search:ip:2001:db8::1::2");
+  });
+
   it("answers 429 in the API error shape with Retry-After", async () => {
     const response = rateLimitedResponse("req_12345678", "search");
     expect(response.status).toBe(429);

@@ -1,5 +1,5 @@
 import { MarketplaceError } from "@marketplace/contracts";
-import { auditEvents, packages, packagesFts, publishers } from "@marketplace/db";
+import { auditEvents, packages, packagesFts, publishers, user } from "@marketplace/db";
 import { eq } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
 
@@ -55,8 +55,8 @@ describe("publisher membership", () => {
   it("lets owners invite, only invitees accept, and keeps members from managing", async () => {
     const owner = await seedAccount(deps, { email: uniqueEmail("inv-owner") });
     const inviteeEmail = uniqueEmail("invitee");
-    const invitee = await seedAccount(deps, { email: inviteeEmail });
-    const stranger = await seedAccount(deps, { email: uniqueEmail("stranger") });
+    const invitee = await seedAccount(deps, { email: inviteeEmail, emailVerified: true });
+    const stranger = await seedAccount(deps, { email: uniqueEmail("stranger"), emailVerified: true });
     const publisher = await createPublisher(deps, owner, { slug: uniqueSlug("team"), name: "Team" });
 
     const invitation = await inviteMember(deps, owner, publisher.id, { email: inviteeEmail.toUpperCase() });
@@ -77,11 +77,28 @@ describe("publisher membership", () => {
     await expectError(inviteMember(deps, owner, publisher.id, { email: inviteeEmail }), "conflict");
   });
 
+  it("lets only an account with a verified email accept an invitation, whatever the caller", async () => {
+    const owner = await seedAccount(deps, { email: uniqueEmail("ver-owner") });
+    const inviteeEmail = uniqueEmail("unverified-invitee");
+    const invitee = await seedAccount(deps, { email: inviteeEmail });
+    const publisher = await createPublisher(deps, owner, { slug: uniqueSlug("ver"), name: "Ver" });
+    const invitation = await inviteMember(deps, owner, publisher.id, { email: inviteeEmail });
+
+    await expect(acceptInvitation(deps, invitee, invitation.id)).rejects.toSatisfy(
+      (error: unknown) =>
+        error instanceof MarketplaceError &&
+        error.code === "forbidden" &&
+        (error.details as { reason?: string } | undefined)?.reason === "email_unverified",
+    );
+    await deps.db.update(user).set({ emailVerified: true }).where(eq(user.id, invitee.userId));
+    expect((await acceptInvitation(deps, invitee, invitation.id)).role).toBe("member");
+  });
+
   it("lets only owners invite admins and lets marketplace admins manage any publisher", async () => {
     const owner = await seedAccount(deps, { email: uniqueEmail("adm-owner") });
     const publisher = await createPublisher(deps, owner, { slug: uniqueSlug("adm"), name: "Adm" });
     const adminEmail = uniqueEmail("pub-admin");
-    const pubAdmin = await seedAccount(deps, { email: adminEmail });
+    const pubAdmin = await seedAccount(deps, { email: adminEmail, emailVerified: true });
     const invite = await inviteMember(deps, owner, publisher.id, { email: adminEmail, role: "admin" });
     await acceptInvitation(deps, pubAdmin, invite.id);
     await expectError(inviteMember(deps, pubAdmin, publisher.id, { email: uniqueEmail("y"), role: "admin" }), "forbidden");

@@ -19,9 +19,11 @@ import { parseInput } from "../validation";
 type DeviceLinkRow = typeof clarkcantDeviceLinks.$inferSelect;
 
 /**
- * Device links accept the narrow `devices:link` scope (what OAuth and device-login clients such as ClarkCant desktop
- * are offered) or the broader account scope that already covered them (`account:write` to change links,
- * `account:read` to list them). `devices:link` grants nothing outside the caller's own device links.
+ * Device links accept the narrow `devices:link` scope (what OAuth clients are offered, since they never get
+ * `account:write`) or the broader account scope that already covered them (`account:write` to change links,
+ * `account:read` to list them). Device-flow sessions (e.g. ClarkCant desktop signing in with a device code) are
+ * `user` actors holding `account:write`, so they pass on the account scope. `devices:link` grants nothing outside the
+ * caller's own device links.
  */
 function requireDeviceScope(actor: Actor, accountScope: "account:read" | "account:write"): void {
   if (actorHasScope(actor, accountScope)) return;

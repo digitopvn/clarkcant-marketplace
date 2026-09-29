@@ -22,7 +22,6 @@ import {
   publisherRepositorySchema,
   publisherSchema,
   MarketplaceError,
-  requireScope,
   requireUser,
   type Actor,
 } from "@marketplace/contracts";
@@ -283,34 +282,6 @@ function mediaDeleter(deps: MarketplaceDeps) {
 }
 
 /**
- * Personal API tokens outlive the credential that creates them (up to a year) and are not revoked with it, so only
- * a signed-in session may create or revoke them, as with account deletion. A token (`cmk_…` or OAuth) must not be
- * able to extend itself into a long-lived credential. Anonymous callers fall through to the service's 401.
- */
-function requireSignedInSession(actor: Actor, action: string): void {
-  if (actor.type === "token") {
-    throw new MarketplaceError("forbidden", `${action} needs a signed-in session, not a token`, {
-      details: { reason: "session_required" },
-    });
-  }
-}
-
-/**
- * No email is ever sent, so an invitation id is only bound to a mailbox when the account proved it owns the address
- * (e.g. a verified GitHub email). Unverified sign-ups cannot accept invitations addressed to an email they typed.
- */
-async function requireVerifiedEmail(deps: MarketplaceDeps, actor: Actor): Promise<void> {
-  requireScope(actor, "account:write");
-  // Reads the caller's own verification flag only; nothing from the profile is returned to the caller.
-  const profile = await getAccountProfile(deps, { type: actor.type, userId: requireUser(actor), scopes: ["account:read"] });
-  if (!profile.emailVerified) {
-    throw new MarketplaceError("forbidden", "Verify your account email before accepting a publisher invitation", {
-      details: { reason: "email_unverified" },
-    });
-  }
-}
-
-/**
  * Runs a `/me/*` write at most once per `Idempotency-Key` for this account and operation; without a key it simply
  * runs. The key's scope includes the account id, so keys never collide across accounts.
  */
@@ -372,9 +343,9 @@ export function createMeRouter() {
     .openapi(routes.createToken, async (c) => {
       const { deps } = c.var.context;
       const actor = c.var.actor;
-      requireSignedInSession(actor, "Creating an API token");
       const input = c.req.valid("json");
-      // The plaintext is never stored for replay (only its hash exists at rest), so a replay cannot repeat it.
+      // The service refuses token callers (signed-in session only). The plaintext is never stored for replay (only
+      // its hash exists at rest), so a replay cannot repeat it.
       let plaintext: string | undefined;
       const { response, replayed } = await idempotent(deps, actor, "tokens.create", key(c), input, 201, async () => {
         const { token, ...metadata } = await createApiToken(deps, actor, input);
@@ -390,10 +361,9 @@ export function createMeRouter() {
       }
       return c.json({ ...response, token: plaintext }, 201, noStore);
     })
-    .openapi(routes.revokeToken, async (c) => {
-      requireSignedInSession(c.var.actor, "Revoking an API token");
-      return c.json(await revokeApiToken(c.var.context.deps, c.var.actor, c.req.valid("param").id), 200, noStore);
-    })
+    .openapi(routes.revokeToken, async (c) =>
+      c.json(await revokeApiToken(c.var.context.deps, c.var.actor, c.req.valid("param").id), 200, noStore),
+    )
     .openapi(routes.linkDevice, async (c) => {
       const { deps } = c.var.context;
       const input = c.req.valid("json");
@@ -448,7 +418,7 @@ export function createMeRouter() {
     .openapi(routes.acceptInvitation, async (c) => {
       const { deps } = c.var.context;
       const { id } = c.req.valid("param");
-      await requireVerifiedEmail(deps, c.var.actor);
+      // The service requires a verified account email.
       const { response } = await idempotent(deps, c.var.actor, "invitations.accept", key(c), { id }, 200, () =>
         acceptInvitation(deps, c.var.actor, id),
       );

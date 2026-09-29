@@ -26,7 +26,8 @@ import { prepareAuditEvent } from "../audit/audit-writer";
 import { chunked } from "../d1-limits";
 import type { MarketplaceDeps } from "../deps";
 import { countMembers } from "../publishers/publisher-service";
-import { syncPackageSearchDocument } from "../search/search-index";
+import { syncPackageSearchDocumentsAfterCommit } from "../search/search-index";
+import { requireSignedInSession } from "./session-guards";
 
 /**
  * Deletes one media object (D1 row and R2 object) unless something still references it, returning whether it was
@@ -77,9 +78,7 @@ export async function deleteAccount(
 ): Promise<AccountDeletionResult> {
   requireScope(actor, "account:write");
   const userId = requireUser(actor);
-  if (actor.type !== "user") {
-    throw new MarketplaceError("forbidden", "Deleting an account needs a signed-in session, not a token");
-  }
+  requireSignedInSession(actor, "Deleting an account");
 
   const memberships = await deps.db
     .select({ organizationId: member.organizationId, role: member.role, publisherId: publishers.id, slug: publishers.slug })
@@ -155,7 +154,7 @@ export async function deleteAccount(
     deps.db.delete(user).where(eq(user.id, userId)),
     audit.statement,
   ]);
-  for (const packageId of orphanedPackageIds) await syncPackageSearchDocument(deps, packageId);
+  await syncPackageSearchDocumentsAfterCommit(deps, orphanedPackageIds, "account deletion");
 
   return {
     deleted: true,

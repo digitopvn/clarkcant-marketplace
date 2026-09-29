@@ -59,6 +59,26 @@ export async function syncPackageSearchDocument(deps: MarketplaceDeps, packageId
   ]);
 }
 
+/**
+ * Re-syncs search documents after a command's own write has already committed. The command has succeeded by then, so
+ * a sync failure must not turn it into an error the caller would retry against a changed state (a deleted account, an
+ * approved claim). Failures are logged at error level instead; the search document is derived from the tables and is
+ * corrected by the package's next re-sync (for example its next indexing).
+ */
+export async function syncPackageSearchDocumentsAfterCommit(
+  deps: MarketplaceDeps,
+  packageIds: readonly string[],
+  context: string,
+): Promise<void> {
+  for (const packageId of packageIds) {
+    try {
+      await syncPackageSearchDocument(deps, packageId);
+    } catch (error) {
+      console.error(`search: re-sync of ${packageId} after ${context} failed; its search document is stale`, error);
+    }
+  }
+}
+
 /** Removes a package from search (e.g. when it is deleted). Curation changes should re-sync instead. */
 export async function removePackageSearchDocument(deps: MarketplaceDeps, packageId: string): Promise<void> {
   await deps.db.delete(packagesFts).where(eq(packagesFts.packageId, packageId));

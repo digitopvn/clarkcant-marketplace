@@ -14,7 +14,7 @@ import type { z } from "zod";
 
 import { prepareAuditEvent } from "../audit/audit-writer";
 import type { MarketplaceDeps } from "../deps";
-import { syncPackageSearchDocument } from "../search/search-index";
+import { syncPackageSearchDocumentsAfterCommit } from "../search/search-index";
 import { parseInput } from "../validation";
 import { authorizePublisher } from "./publisher-service";
 import type { VerificationPorts } from "./verification-ports";
@@ -79,7 +79,7 @@ export async function claimPackage(
         .where(eq(packages.id, listing.id)),
     ]);
     // The publisher's name is part of the package's search text.
-    await syncPackageSearchDocument(deps, listing.id);
+    await syncPackageSearchDocumentsAfterCommit(deps, [listing.id], "claim approval");
   } else {
     await deps.db.batch(writes);
   }

@@ -17,8 +17,9 @@ export const apiScopeSchema = z.enum([
   "media:write",
   "account:read",
   "account:write",
-  // Link, list and unlink the caller's own ClarkCant installs, and nothing else. It exists so OAuth and device-login
-  // clients (e.g. ClarkCant desktop) can link a device without `account:write`, which they are never offered.
+  // Link, list and unlink the caller's own ClarkCant installs, and nothing else. It exists so OAuth clients can link a
+  // device without `account:write`, which OAuth clients are never offered. Device-login (device-flow) clients such as
+  // ClarkCant desktop get a session instead: a `user` actor that holds `account:write` like any signed-in session.
   "devices:link",
   "admin",
 ]);

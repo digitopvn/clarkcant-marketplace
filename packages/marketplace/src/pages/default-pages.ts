@@ -6,8 +6,8 @@ import {
   type PageDocumentInput,
   type PageKind,
 } from "@marketplace/contracts";
-import { pageRevisions, pages } from "@marketplace/db";
-import { eq, inArray } from "drizzle-orm";
+import { auditEvents, pageRevisions, pages } from "@marketplace/db";
+import { and, eq, inArray } from "drizzle-orm";
 
 import type { MarketplaceDeps } from "../deps";
 import { LEGAL_PAGES } from "./legal-pages";
@@ -204,15 +204,24 @@ async function createMissingDefaultPages(deps: MarketplaceDeps, writers: PageWri
     .leftJoin(pageRevisions, eq(pageRevisions.id, pages.currentDraftRevisionId))
     .where(inArray(pages.slug, slugs));
   const present = new Map(rows.map((row) => [row.slug, row]));
+  const seeded = await systemSeededPageIds(
+    deps,
+    rows.filter((row) => row.publishedId === null && row.draftId !== null && row.draftNumber === 1).map((row) => row.id),
+  );
   const result: DefaultPagesResult = { created: [], existing: [] };
   for (const page of DEFAULT_PAGES) {
     const existing = present.get(page.slug);
     let target: { pageId: string; revisionId: string };
     if (existing) {
-      // A system-seeded page whose publish step never ran (an interrupted earlier run): still revision 1, never
-      // edited by anyone and never published, so finishing it cannot overwrite anything. Every other page is left alone.
+      // A page the jobs Worker created but never published (an interrupted earlier run): still revision 1, so never
+      // edited by anyone, and never published, so finishing it cannot overwrite anything. The creator is proven by the
+      // `page.created` audit event, not by a null revision author: authors become null when an account is deleted, and
+      // an editor's unpublished draft must never be published by the cron. Every other page is left alone.
       const unfinished =
-        existing.publishedId === null && existing.draftId !== null && existing.draftNumber === 1 && existing.draftAuthor === null;
+        existing.publishedId === null &&
+        existing.draftNumber === 1 &&
+        existing.draftAuthor === null &&
+        seeded.has(existing.id);
       if (!unfinished || existing.draftId === null) {
         result.existing.push(page.slug);
         continue;
@@ -244,4 +253,22 @@ async function createMissingDefaultPages(deps: MarketplaceDeps, writers: PageWri
     result.created.push(page.slug);
   }
   return result;
+}
+
+/** The pages among `pageIds` whose `page.created` audit event was recorded by {@link DEFAULT_PAGES_ACTOR}. */
+async function systemSeededPageIds(deps: MarketplaceDeps, pageIds: string[]): Promise<Set<string>> {
+  if (pageIds.length === 0) return new Set();
+  const rows = await deps.db
+    .select({ pageId: auditEvents.subjectId })
+    .from(auditEvents)
+    .where(
+      and(
+        eq(auditEvents.action, "page.created"),
+        eq(auditEvents.subjectType, "page"),
+        inArray(auditEvents.subjectId, pageIds),
+        eq(auditEvents.actorType, DEFAULT_PAGES_ACTOR.type),
+        eq(auditEvents.actorId, DEFAULT_PAGES_ACTOR.id ?? ""),
+      ),
+    );
+  return new Set(rows.flatMap((row) => (row.pageId === null ? [] : [row.pageId])));
 }

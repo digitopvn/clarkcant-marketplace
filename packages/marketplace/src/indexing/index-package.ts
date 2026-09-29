@@ -7,6 +7,7 @@ import {
   type NormalizedManifest,
 } from "@marketplace/contracts";
 import {
+  auditEvents,
   categories,
   packageAudits,
   packageFacets,
@@ -18,12 +19,13 @@ import {
 } from "@marketplace/db";
 import { MarkdownInputTooLargeError, renderMarkdownToSafeHtml } from "@marketplace/markdown";
 import { MediaRejectedError, storeGeneratedMedia, storeUntrustedImage, type MediaDeps } from "@marketplace/media";
-import { and, eq, isNull } from "drizzle-orm";
+import { and, eq, isNull, sql } from "drizzle-orm";
 
 import { prepareAuditEvent } from "../audit/audit-writer";
+import { isConstraintViolation } from "../db-errors";
 import type { MarketplaceDeps } from "../deps";
 import { syncPackageSearchDocument } from "../search/search-index";
-import { isIndexingRejection, type IndexingRejectionCode } from "./indexing-errors";
+import { isIndexingRejection, rejectionErrorText, type IndexingRejectionCode } from "./indexing-errors";
 import { verifyTarballIntegrity } from "./integrity";
 import { permissionRows, validateManifest } from "./manifest-validation";
 import { createNpmRegistry, resolveVersion, type NpmRegistry, type ResolvedVersion } from "./npm-registry";
@@ -404,7 +406,7 @@ async function finalize(
     });
   }
 
-  const audit = prepareAuditEvent(deps, {
+  const { row: auditRow } = prepareAuditEvent(deps, {
     actor: INDEXER_ACTOR,
     action: "package.indexed",
     subject: { type: "package", id: ingested.packageId },
@@ -416,34 +418,56 @@ async function finalize(
       becameLatest: becomesLatest,
     },
   });
-  // Compare-and-set on the pointer read above: if another run moved it meanwhile, fail so the step retries against
-  // the new value instead of overwriting it. A retry after this write sees its own version and leaves it alone.
-  const updated = await deps.db
-    .update(packages)
-    .set(listing)
-    .where(
-      and(
-        eq(packages.id, ingested.packageId),
-        current.latestVersion === null ? isNull(packages.latestVersion) : eq(packages.latestVersion, current.latestVersion),
+  // Compare-and-set on the pointer read above, atomic with the submission status and the audit event. The audit insert
+  // carries the precondition: when another run moved the pointer (or the package is gone) since it was read, the
+  // insert yields a NULL actor type, the NOT NULL constraint aborts the whole batch, and nothing is written. The step
+  // then retries against the new value; a retry after a successful batch sees its own version and leaves it alone.
+  const unchanged = sql`exists (select 1 from ${packages} where ${packages.id} = ${ingested.packageId} and ${packages.latestVersion} is ${current.latestVersion})`;
+  try {
+    await deps.db.batch([
+      deps.db.insert(auditEvents).select(
+        deps.db
+          .select({
+            id: sql`${auditRow.id}`.as("id"),
+            actorType: sql`case when ${unchanged} then ${auditRow.actorType} else null end`.as("actor_type"),
+            actorId: sql`${auditRow.actorId}`.as("actor_id"),
+            action: sql`${auditRow.action}`.as("action"),
+            subjectType: sql`${auditRow.subjectType}`.as("subject_type"),
+            subjectId: sql`${auditRow.subjectId}`.as("subject_id"),
+            idempotencyKey: sql`${auditRow.idempotencyKey}`.as("idempotency_key"),
+            data: sql`${JSON.stringify(auditRow.data)}`.as("data"),
+            createdAt: sql`${auditRow.createdAt.getTime()}`.as("created_at"),
+          })
+          .from(packageSubmissions)
+          .where(eq(packageSubmissions.id, submissionId)),
       ),
-    )
-    .returning({ id: packages.id });
-  if (updated.length === 0) throw new Error(`latest version of ${resolved.name} changed during finalize; retrying`);
-
-  await deps.db.batch([
-    deps.db
-      .update(packageSubmissions)
-      .set({ status: "indexed", error: null, updatedAt: now })
-      .where(eq(packageSubmissions.id, submissionId)),
-    audit.statement,
-  ]);
+      deps.db
+        .update(packages)
+        .set(listing)
+        .where(
+          and(
+            eq(packages.id, ingested.packageId),
+            current.latestVersion === null ? isNull(packages.latestVersion) : eq(packages.latestVersion, current.latestVersion),
+          ),
+        ),
+      deps.db
+        .update(packageSubmissions)
+        .set({ status: "indexed", error: null, updatedAt: now })
+        .where(eq(packageSubmissions.id, submissionId)),
+    ]);
+  } catch (error) {
+    if (isConstraintViolation(error, "audit_events.actor_type")) {
+      throw new Error(`latest version of ${resolved.name} changed during finalize; retrying`, { cause: error });
+    }
+    throw error;
+  }
   await syncPackageSearchDocument(deps, ingested.packageId);
 }
 
 async function recordFailure(deps: MarketplaceDeps, params: IndexPackageParams, error: unknown): Promise<void> {
   const rejection = isIndexingRejection(error) ? error : null;
   const message = rejection
-    ? `${rejection.code}: ${rejection.message}`
+    ? rejectionErrorText(rejection.code, rejection.message)
     : `indexing failed after retries: ${error instanceof Error ? error.message : String(error)}`;
   const audit = prepareAuditEvent(deps, {
     actor: INDEXER_ACTOR,

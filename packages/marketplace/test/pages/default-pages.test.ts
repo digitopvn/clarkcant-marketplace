@@ -137,4 +137,26 @@ describe("default pages seeded by the jobs Worker", () => {
     expect(await ensureDefaultPagesAsSystem(deps)).toEqual({ created: [], existing: allSlugs });
     expect((await getPublishedPage(deps, "cookies")).revisionId).toBe(live.revisionId);
   });
+
+  it("never publishes an editor's unpublished draft whose author account was deleted", async () => {
+    await deps.db.batch([deps.db.delete(pagePublications), deps.db.delete(pageRevisions), deps.db.delete(pages)]);
+    const departed: Actor = { type: "user", userId: "usr_default_departed", scopes: ["pages:write"] };
+    await deps.db.insert(user).values({ id: "usr_default_departed", name: "Departed", email: "departed@example.test" }).onConflictDoNothing();
+    const legal = LEGAL_PAGES.find((page) => page.slug === "privacy");
+    if (!legal) throw new Error("privacy page is missing from LEGAL_PAGES");
+    // Even a draft identical to the default is the editor's page, not an unfinished seed.
+    const draft = await createPage(deps, departed, { slug: "privacy", kind: "legal", document: legal.document });
+    await deps.db.delete(user).where(eq(user.id, "usr_default_departed"));
+    const [revision] = await deps.db.select().from(pageRevisions).where(eq(pageRevisions.id, draft.draft.revision.id));
+    expect(revision?.authorId).toBeNull();
+
+    const result = await ensureDefaultPagesAsSystem(deps);
+    expect(result.existing).toEqual(["privacy"]);
+    expect(result.created).not.toContain("privacy");
+    const [row] = await deps.db.select().from(pages).where(eq(pages.id, draft.page.id));
+    expect(row?.publishedRevisionId).toBeNull();
+    await expect(getPublishedPage(deps, "privacy")).rejects.toSatisfy(
+      (error) => error instanceof MarketplaceError && error.code === "not_found",
+    );
+  });
 });

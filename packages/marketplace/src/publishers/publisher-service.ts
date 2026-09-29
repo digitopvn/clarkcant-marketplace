@@ -18,6 +18,7 @@ import {
 import { invitation, member, organization, publishers, user } from "@marketplace/db";
 import { and, asc, eq, inArray, or } from "drizzle-orm";
 
+import { requireVerifiedEmail } from "../accounts/session-guards";
 import { prepareAuditEvent } from "../audit/audit-writer";
 import type { MarketplaceDeps } from "../deps";
 import { parseInput } from "../validation";
@@ -217,7 +218,10 @@ export async function inviteMember(
   return toInvitation(row, publisher.id);
 }
 
-/** Accepts an invitation addressed to the caller's account email. */
+/**
+ * Accepts an invitation addressed to the caller's account email. The account email must be verified (see
+ * {@link requireVerifiedEmail}), checked before the invitation is looked up.
+ */
 export async function acceptInvitation(
   deps: MarketplaceDeps,
   actor: Actor,
@@ -225,15 +229,15 @@ export async function acceptInvitation(
 ): Promise<Publisher> {
   requireScope(actor, "account:write");
   const userId = requireUser(actor);
+  const email = await requireVerifiedEmail(deps, userId, "accepting a publisher invitation");
   const [row] = await deps.db
     .select({ invitation, publisher: publishers })
     .from(invitation)
     .innerJoin(publishers, eq(publishers.organizationId, invitation.organizationId))
     .where(eq(invitation.id, invitationId))
     .limit(1);
-  const [account] = await deps.db.select({ email: user.email }).from(user).where(eq(user.id, userId)).limit(1);
   // Same answer for "no such invitation" and "addressed to someone else", so ids cannot be probed.
-  if (!row || !account || row.invitation.email !== account.email.toLowerCase()) {
+  if (!row || email === null || row.invitation.email !== email.toLowerCase()) {
     throw new MarketplaceError("not_found", "No such invitation for this account");
   }
   if (row.invitation.status !== "pending" || row.invitation.expiresAt <= deps.now()) {
