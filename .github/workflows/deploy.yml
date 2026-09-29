@@ -102,8 +102,11 @@ jobs:
           done
           [ "$code" = "200" ] || { cat /tmp/health.json; exit 1; }
           grep -q '"status":"ok"' /tmp/health.json
-          curl -sf "$base/openapi.json" | grep -q '"openapi":"3.1'
-          curl -sf "$base/" | grep -q 'ClarkCant Marketplace'
+          # Download first: with pipefail, `curl | grep -q` fails when grep exits early and curl gets SIGPIPE.
+          curl -sf -o /tmp/openapi.json "$base/openapi.json"
+          grep -q '"openapi":"3.1' /tmp/openapi.json
+          curl -sf -o /tmp/home.html "$base/"
+          grep -q 'ClarkCant Marketplace' /tmp/home.html
           echo "Smoke tests passed for $base"
 
       - name: Playwright critical paths against staging
