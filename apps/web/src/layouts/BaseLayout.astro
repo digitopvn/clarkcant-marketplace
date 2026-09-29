@@ -1,0 +1,87 @@
+---
+import "../styles/global.css";
+
+import { buildPageMeta, type SocialImage } from "@marketplace/seo";
+
+import SiteFooter from "../components/SiteFooter.astro";
+import SiteHeader from "../components/SiteHeader.astro";
+import ConsentBanner from "../components/consent/ConsentBanner.astro";
+import SeoHead from "../components/seo/SeoHead.astro";
+import ShareBar from "../components/share/ShareBar.astro";
+import { THEME_SCRIPT } from "../components/theme-script";
+import { runtimeVars } from "../server/request-context";
+
+/**
+ * Public, indexable pages pass `seo`. Pages without it (sign-in, account, admin, previews, errors) are utility
+ * pages: they are marked `noindex`, get no Markdown alternate and no share bar.
+ */
+export interface SeoProps {
+  /** Canonical site-relative path; defaults to the requested path. */
+  path?: string;
+  /** Whether the page has a Markdown twin at `<path>.md` (default true). */
+  markdown?: boolean;
+  image?: SocialImage | null;
+  type?: "website" | "article";
+  jsonLd?: Record<string, unknown>[];
+  noindex?: boolean;
+  locale?: string;
+  /** Show the share bar (default true for indexable pages). */
+  share?: boolean;
+}
+
+interface Props {
+  title: string;
+  description?: string;
+  seo?: SeoProps;
+}
+
+const { title, description, seo } = Astro.props;
+const failed = (Astro.response.status ?? 200) >= 400;
+const noindex = !seo || failed || seo.noindex === true;
+const meta = buildPageMeta({
+  siteUrl: runtimeVars().PUBLIC_SITE_URL,
+  path: seo?.path ?? Astro.url.pathname,
+  title,
+  description,
+  image: seo?.image ?? null,
+  type: seo?.type ?? "website",
+  noindex,
+  markdown: Boolean(seo) && !failed && seo?.markdown !== false,
+  locale: seo?.locale,
+});
+const showShare = Boolean(seo) && !noindex && seo?.share !== false;
+const lang = seo?.locale ?? "en";
+
+---
+
+<!doctype html>
+<html lang={lang}>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{meta.title}</title>
+    <meta name="description" content={meta.description} />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="theme-color" content="#f6f5f2" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#0c0d11" media="(prefers-color-scheme: dark)" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&family=Instrument+Serif:ital@0;1&display=swap"
+    />
+    <SeoHead meta={meta} jsonLd={seo?.jsonLd ?? []} />
+    <script is:inline set:html={THEME_SCRIPT} />
+  </head>
+  <body class="min-h-screen flex flex-col bg-bg text-ink">
+    <a class="skip-link" href="#main">Skip to content</a>
+    <SiteHeader />
+    <main id="main" tabindex="-1" class="flex-1 focus:outline-none">
+      <slot />
+      {showShare && <ShareBar title={title} canonicalUrl={meta.canonical} markdownUrl={meta.markdownUrl} />}
+    </main>
+    <SiteFooter />
+    <ConsentBanner />
+  </body>
+</html>

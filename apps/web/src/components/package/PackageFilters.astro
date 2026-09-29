@@ -1,0 +1,118 @@
+---
+import type { Category } from "@marketplace/contracts";
+
+import { ISOLATION_OPTIONS, KIND_OPTIONS, PLATFORM_OPTIONS } from "./package-labels";
+
+export interface PackageFilterValues {
+  q: string;
+  category?: string | undefined;
+  kind?: string | undefined;
+  isolation?: string | undefined;
+  platform?: string | undefined;
+  publisher?: string | undefined;
+  curation?: string | undefined;
+}
+
+interface Props {
+  values: PackageFilterValues;
+  categories: Category[];
+}
+
+const { values, categories } = Astro.props;
+const selectClass =
+  "w-full rounded-full border border-line bg-card px-3 py-2 text-sm text-ink focus:border-accent focus:outline-none";
+const selects = [
+  { name: "category", label: "Category", options: categories.map((c) => ({ value: c.slug, label: c.name })) },
+  { name: "kind", label: "Facet", options: KIND_OPTIONS },
+  { name: "isolation", label: "Isolation", options: ISOLATION_OPTIONS },
+  { name: "platform", label: "Platform", options: PLATFORM_OPTIONS },
+  {
+    name: "curation",
+    label: "Curation",
+    options: [
+      { value: "featured", label: "Featured" },
+      { value: "listed", label: "Listed" },
+    ],
+  },
+] as const;
+const current: Record<string, string | undefined> = { ...values };
+const active = Boolean(
+  values.q || values.category || values.kind || values.isolation || values.platform || values.publisher || values.curation,
+);
+---
+
+<form action="/packages" method="get" role="search" class="grid gap-3" data-package-filters>
+  <div class="flex flex-wrap gap-2">
+    <label for="package-search" class="sr-only">Search packages</label>
+    <input
+      id="package-search"
+      type="search"
+      name="q"
+      value={values.q}
+      maxlength={200}
+      placeholder="Search widgets, tools, themes"
+      class="min-w-[12rem] flex-1 rounded-full border border-line bg-card px-4 py-2.5 text-ink placeholder:text-faint focus:border-accent focus:outline-none"
+    />
+    <button type="submit" class="action-button rounded-full bg-accent px-5 py-2.5 text-sm font-medium text-on-accent hover:opacity-90">
+      Search
+    </button>
+  </div>
+  <fieldset class="grid min-w-0 grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+    <legend class="sr-only">Filters</legend>
+    {
+      selects.map((select) => (
+        <label class="grid gap-1 text-xs text-muted">
+          {select.label}
+          <select name={select.name} class={selectClass} aria-describedby="package-filters-hint">
+            <option value="">Any</option>
+            {select.options.map((option) => (
+              <option value={option.value} selected={current[select.name] === option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </label>
+      ))
+    }
+  </fieldset>
+  <p id="package-filters-hint" class="text-xs text-muted">
+    Choose filters, then press Enter or Search to apply them. A filter picked with a mouse or touch applies at once.
+  </p>
+  {values.publisher && <input type="hidden" name="publisher" value={values.publisher} />}
+  {
+    active && (
+      <p class="text-sm text-muted">
+        <a href="/packages" class="inline-flex min-h-6 items-center text-accent underline underline-offset-2">
+          Clear filters
+        </a>
+      </p>
+    )
+  }
+</form>
+
+<script>
+  // Progressive enhancement. Without JavaScript the Search button submits the form.
+  // A filter picked with a pointer applies at once. Keyboard changes never navigate on their own (WCAG 3.2.2): arrow
+  // keys on a closed <select> change its value and fire `change` in several browsers, so a keyboard user applies the
+  // filters with Enter or the Search button instead.
+  for (const form of document.querySelectorAll<HTMLFormElement>("form[data-package-filters]")) {
+    let pointerSelect: HTMLSelectElement | null = null;
+    form.addEventListener("pointerdown", (event) => {
+      pointerSelect = event.target instanceof HTMLSelectElement ? event.target : null;
+    });
+    form.addEventListener("keydown", (event) => {
+      if (!(event.target instanceof HTMLSelectElement)) return;
+      pointerSelect = null;
+      if (event.key === "Enter") {
+        event.preventDefault();
+        form.requestSubmit();
+      }
+    });
+    form.addEventListener("focusout", () => {
+      pointerSelect = null;
+    });
+    form.addEventListener("change", (event) => {
+      if (event.target instanceof HTMLSelectElement && event.target === pointerSelect) form.requestSubmit();
+    });
+  }
+</script>

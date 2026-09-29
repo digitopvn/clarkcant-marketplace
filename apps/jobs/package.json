@@ -1,0 +1,21 @@
+{
+  "name": "@marketplace/jobs",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev --port 8788",
+    "build": "wrangler deploy --dry-run --outdir dist --env=\"\"",
+    "cf-typegen": "wrangler types --env-interface Env --include-runtime=false --strict-vars=false",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "@marketplace/contracts": "workspace:*",
+    "@marketplace/db": "workspace:*",
+    "@marketplace/marketplace": "workspace:*",
+    "zod": "4.6.5"
+  },
+  "devDependencies": {
+    "wrangler": "4.143.0"
+  }
+}

@@ -1,0 +1,22 @@
+---
+import { jsonForScript } from "@marketplace/page-engine";
+import type { PageMeta } from "@marketplace/seo";
+
+/**
+ * Head tags for search engines, link unfurlers and agents: canonical URL, robots, Markdown alternate, Open Graph,
+ * Twitter card and JSON-LD. All values come from `buildPageMeta`, so every surface names the same canonical URL.
+ */
+interface Props {
+  meta: PageMeta;
+  jsonLd: Record<string, unknown>[];
+}
+
+const { meta, jsonLd } = Astro.props;
+---
+
+<link rel="canonical" href={meta.canonical} />
+{meta.robots && <meta name="robots" content={meta.robots} />}
+{meta.markdownUrl && <link rel="alternate" type="text/markdown" href={meta.markdownUrl} title="Markdown version" />}
+{meta.openGraph.map(([property, content]) => <meta property={property} content={content} />)}
+{meta.twitter.map(([name, content]) => <meta name={name} content={content} />)}
+{jsonLd.length > 0 && <script type="application/ld+json" is:inline set:html={jsonForScript(jsonLd.length === 1 ? jsonLd[0] : jsonLd)} />}

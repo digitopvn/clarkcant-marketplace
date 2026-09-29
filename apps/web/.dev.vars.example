@@ -1,0 +1,16 @@
+# Names only. Copy to `.dev.vars` (git-ignored) to override wrangler.jsonc vars during `pnpm dev`.
+# Deployed environments set secrets with `wrangler secret put <NAME> --env <env>`, never in files.
+
+# Public origin used for absolute links, e.g. http://localhost:4321
+PUBLIC_SITE_URL=
+# development | staging | production
+ENVIRONMENT=
+# Comma-separated admin email allowlist
+ADMIN_EMAILS=
+
+# Better Auth signing/encryption secret, at least 32 random characters (e.g. `openssl rand -base64 32`)
+BETTER_AUTH_SECRET=
+# Optional GitHub OAuth app for "Continue with GitHub"; set both or neither.
+# Callback URL: <PUBLIC_SITE_URL>/api/auth/callback/github
+GITHUB_CLIENT_ID=
+GITHUB_CLIENT_SECRET=

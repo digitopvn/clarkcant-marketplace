@@ -1,0 +1,38 @@
+---
+import type { PackageVersionDetail } from "@marketplace/contracts";
+
+import { checkLabel, checkSummary } from "./package-labels";
+
+interface Props {
+  version: PackageVersionDetail;
+}
+
+const { version } = Astro.props;
+const resultClass = { pass: "text-success", warn: "text-warning", fail: "text-warning" } as const;
+const resultLabel = { pass: "Pass", warn: "Note", fail: "Failed" } as const;
+const dateFormat = new Intl.DateTimeFormat("en", { dateStyle: "medium", timeZone: "UTC" });
+---
+
+<section aria-labelledby="facts-heading" class="rounded-card border border-line bg-card p-5 shadow-card">
+  <h2 id="facts-heading" class="font-display text-2xl">Integrity and provenance</h2>
+  <p class="mt-1 text-sm text-muted">Automated facts recorded when v{version.version} was indexed. They are not a review.</p>
+  <ul class="mt-4 grid gap-3">
+    {
+      version.securityChecks.map((check) => (
+        <li class="grid gap-0.5">
+          <span class="flex items-center justify-between gap-2 text-sm font-medium">
+            {checkLabel(check)}
+            <span class={`text-xs ${resultClass[check.result]}`}>{resultLabel[check.result]}</span>
+          </span>
+          <span class="text-sm text-muted">{checkSummary(check)}</span>
+        </li>
+      ))
+    }
+  </ul>
+  <dl class="mt-4 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-xs">
+    <dt class="text-muted">Published to npm</dt>
+    <dd><time datetime={version.publishedAt}>{dateFormat.format(new Date(version.publishedAt))}</time></dd>
+    <dt class="text-muted">Indexed</dt>
+    <dd><time datetime={version.indexedAt}>{dateFormat.format(new Date(version.indexedAt))}</time></dd>
+  </dl>
+</section>

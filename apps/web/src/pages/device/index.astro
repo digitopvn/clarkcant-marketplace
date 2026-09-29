@@ -1,0 +1,22 @@
+---
+import DeviceApproval from "../../components/auth/DeviceApproval";
+import BaseLayout from "../../layouts/BaseLayout.astro";
+
+export const prerender = false;
+
+const userCode = (Astro.url.searchParams.get("user_code") ?? "").slice(0, 32);
+if (Astro.locals.actor.type !== "user") {
+  const next = userCode ? `/device?user_code=${encodeURIComponent(userCode)}` : "/device";
+  return Astro.redirect(`/login?next=${encodeURIComponent(next)}`, 302);
+}
+---
+
+<BaseLayout title="Approve a device" description="Approve a CLI or device sign-in.">
+  <div class="container-page max-w-md py-16">
+    <h1 class="font-display text-4xl">Approve a device</h1>
+    <p class="mt-2 text-sm text-muted">Enter the code shown by the CLI or app you are signing in to.</p>
+    <div class="mt-8 rounded-card border border-line bg-card p-6 shadow-card">
+      <DeviceApproval client:load initialCode={userCode} />
+    </div>
+  </div>
+</BaseLayout>

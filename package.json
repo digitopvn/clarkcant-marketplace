@@ -1,0 +1,45 @@
+{
+  "name": "clarkcant-marketplace",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@10.32.1",
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "scripts": {
+    "dev": "pnpm --filter @marketplace/web dev",
+    "dev:jobs": "pnpm --filter @marketplace/jobs dev",
+    "build": "pnpm --filter @marketplace/web build && pnpm --filter @marketplace/jobs build",
+    "typecheck": "tsc --noEmit -p tsconfig.json && pnpm -r --workspace-concurrency=1 typecheck",
+    "lint": "eslint .",
+    "test": "vitest run",
+    "test:e2e": "playwright test",
+    "cf-typegen": "pnpm --filter @marketplace/web cf-typegen && pnpm --filter @marketplace/jobs cf-typegen",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate:local": "pnpm --filter @marketplace/web exec wrangler d1 migrations apply DB --local --config wrangler.jsonc",
+    "db:migrate:staging": "pnpm --filter @marketplace/web exec wrangler d1 migrations apply DB --remote --config wrangler.jsonc --env staging",
+    "db:migrate:production": "pnpm --filter @marketplace/web exec wrangler d1 migrations apply DB --remote --config wrangler.jsonc --env production",
+    "migrations:check": "node scripts/check-migrations.mjs",
+    "index:local": "tsx scripts/index-local.mjs",
+    "verify": "pnpm lint && pnpm typecheck && pnpm test"
+  },
+  "devDependencies": {
+    "@axe-core/playwright": "4.13.0",
+    "@cloudflare/vitest-pool-workers": "0.22.0",
+    "@cloudflare/workers-types": "5.20260929.1",
+    "@eslint/js": "10.0.1",
+    "@playwright/test": "1.63.0",
+    "@types/node": "26.6.3",
+    "@vitest/runner": "4.1.11",
+    "@vitest/snapshot": "4.1.11",
+    "drizzle-kit": "0.31.11",
+    "eslint": "10.11.0",
+    "globals": "17.12.0",
+    "tsx": "4.23.15",
+    "typescript": "6.0.3",
+    "typescript-eslint": "8.71.0",
+    "vitest": "4.1.11",
+    "wrangler": "4.143.0"
+  }
+}

@@ -1,0 +1,25 @@
+---
+interface Props {
+  query?: string;
+  category?: string | undefined;
+}
+
+const { query = "", category } = Astro.props;
+---
+
+<form action="/packages" method="get" role="search" class="flex gap-2">
+  <label for="package-search" class="sr-only">Search packages</label>
+  <input
+    id="package-search"
+    type="search"
+    name="q"
+    value={query}
+    maxlength={200}
+    placeholder="Search widgets, tools, themes"
+    class="min-w-0 flex-1 rounded-full border border-line bg-card px-4 py-2.5 text-ink placeholder:text-faint focus:border-accent focus:outline-none"
+  />
+  {category && <input type="hidden" name="category" value={category} />}
+  <button type="submit" class="action-button rounded-full bg-accent px-5 py-2.5 text-sm font-medium text-on-accent hover:opacity-90">
+    Search
+  </button>
+</form>

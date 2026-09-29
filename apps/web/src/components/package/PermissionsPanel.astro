@@ -1,0 +1,66 @@
+---
+import type { PackageVersionDetail } from "@marketplace/contracts";
+
+import { RISK_LABELS, describePermission, isolationLane, type RiskLevel } from "./package-labels";
+
+interface Props {
+  version: PackageVersionDetail;
+}
+
+const { version } = Astro.props;
+const lanes = version.facets.map((facet) => ({ facet, lane: isolationLane(facet.isolation) }));
+const permissions = version.permissions.map(describePermission);
+const riskClass: Record<RiskLevel, string> = {
+  low: "border-line text-success",
+  moderate: "border-line text-warning",
+  high: "border-warning text-warning",
+};
+---
+
+<section aria-labelledby="permissions-heading" class="rounded-card border border-line bg-card p-5 shadow-card">
+  <h2 id="permissions-heading" class="font-display text-2xl">What it asks for</h2>
+  <p class="mt-1 text-sm text-muted">
+    Declared in <code class="font-mono">clarkcant.json</code>. These are requests, not grants: ClarkCant asks for your
+    consent at install time, and a marketplace listing is not a security review.
+  </p>
+
+  <h3 class="mt-5 text-sm font-medium">Isolation lanes</h3>
+  <ul class="mt-2 grid gap-2">
+    {
+      lanes.map(({ facet, lane }) => (
+        <li class="rounded-lg border border-line bg-raised p-3">
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <span class="text-sm font-medium">
+              {lane.label} <span class="font-mono text-xs text-faint">· {facet.kind}</span>
+            </span>
+            <span class={`rounded-full border px-2 py-0.5 text-xs ${riskClass[lane.risk]}`}>{RISK_LABELS[lane.risk]}</span>
+          </div>
+          <p class="mt-1 text-sm text-muted">{lane.summary}</p>
+        </li>
+      ))
+    }
+  </ul>
+
+  <h3 class="mt-5 text-sm font-medium">Permissions</h3>
+  {
+    permissions.length === 0 ? (
+      <p class="mt-2 text-sm text-muted">
+        No capabilities, network origins, file paths, microphone, camera or lifecycle scripts requested.
+      </p>
+    ) : (
+      <ul class="mt-2 grid gap-2">
+        {permissions.map((permission) => (
+          <li class="flex flex-wrap items-start justify-between gap-2 rounded-lg border border-line bg-raised p-3">
+            <span class="min-w-0">
+              <span class="block text-sm font-medium">{permission.title}</span>
+              <span class="block font-mono text-xs text-muted break-all">{permission.detail}</span>
+            </span>
+            <span class={`rounded-full border px-2 py-0.5 text-xs ${riskClass[permission.risk]}`}>
+              {RISK_LABELS[permission.risk]}
+            </span>
+          </li>
+        ))}
+      </ul>
+    )
+  }
+</section>

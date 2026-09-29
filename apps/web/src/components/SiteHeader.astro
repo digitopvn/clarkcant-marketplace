@@ -1,0 +1,66 @@
+---
+import { actorHasScope } from "@marketplace/contracts";
+
+import OrbMark from "./OrbMark.astro";
+import ThemeToggle from "./ThemeToggle.astro";
+
+const path = Astro.url.pathname;
+const actor = Astro.locals.actor;
+const signedIn = actor.type !== "anonymous";
+
+const links = [
+  { href: "/packages", label: "Packages" },
+  { href: "/collections", label: "Collections" },
+  { href: "/docs/api", label: "API" },
+  ...(signedIn && actorHasScope(actor, "admin") ? [{ href: "/admin/pages", label: "Admin" }] : []),
+  signedIn ? { href: "/account", label: "Account" } : { href: `/login?next=${encodeURIComponent(path)}`, label: "Sign in" },
+];
+
+function isCurrent(href: string): boolean {
+  const target = href.split("?")[0] ?? href;
+  if (target === "/admin/pages") return path.startsWith("/admin");
+  return path === target || path.startsWith(`${target}/`);
+}
+
+const linkClass = "rounded-full px-3 py-1.5 text-muted hover:bg-accent-soft hover:text-ink";
+---
+
+<header class="border-b border-line">
+  <div class="container-page flex items-center justify-between gap-2 py-4">
+    <a href="/" class="flex min-w-0 items-center gap-2 text-ink no-underline">
+      <OrbMark id="orb-header" />
+      <span class="flex min-w-0 items-baseline gap-2">
+        <span class="font-display text-2xl leading-none">ClarkCant</span>
+        <span class="text-sm text-muted max-[399px]:sr-only">Marketplace</span>
+      </span>
+    </a>
+    <div class="flex items-center gap-1 text-sm">
+      <nav aria-label="Primary" class="hidden items-center gap-1 md:flex">
+        {
+          links.map((link) => (
+            <a href={link.href} class={linkClass} aria-current={isCurrent(link.href) ? "page" : undefined}>
+              {link.label}
+            </a>
+          ))
+        }
+      </nav>
+      <ThemeToggle />
+      <details class="site-menu relative md:hidden">
+        <summary class={`${linkClass} cursor-pointer list-none`}>Menu</summary>
+        <nav
+          aria-label="Primary (compact)"
+          class="absolute right-0 z-30 mt-2 flex w-48 flex-col gap-1 rounded-xl border border-line bg-raised p-2 shadow-card"
+        >
+          {
+            links.map((link) => (
+              <a href={link.href} class={linkClass} aria-current={isCurrent(link.href) ? "page" : undefined}>
+                {link.label}
+              </a>
+            ))
+          }
+        </nav>
+      </details>
+    </div>
+  </div>
+  <div class="spectrum-rule" aria-hidden="true"></div>
+</header>

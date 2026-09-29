@@ -1,0 +1,97 @@
+---
+import { isMarketplaceError, type Page, type PackageSummary } from "@marketplace/contracts";
+import { listCategories, listPackages } from "@marketplace/marketplace";
+
+import PackageFilters, { type PackageFilterValues } from "../../components/package/PackageFilters.astro";
+import PackageGrid from "../../components/package/PackageGrid.astro";
+import BaseLayout from "../../layouts/BaseLayout.astro";
+import { createRequestContext } from "../../server/request-context";
+import { packagesIndexSeo } from "../../server/seo";
+
+export const prerender = false;
+
+const params = Astro.url.searchParams;
+const param = (key: string) => params.get(key) || undefined;
+const filters: PackageFilterValues = {
+  q: params.get("q") ?? "",
+  category: param("category"),
+  kind: param("kind"),
+  isolation: param("isolation"),
+  platform: param("platform"),
+  publisher: param("publisher"),
+  curation: param("curation"),
+};
+const cursor = param("cursor");
+
+const { deps, vars } = createRequestContext();
+const categories = await listCategories(deps);
+
+let result: Page<PackageSummary> | null = null;
+let invalidQuery = false;
+try {
+  result = await listPackages(deps, { ...filters, cursor });
+} catch (error) {
+  // Malformed query-string input is a user error: show a message with a 400, never a 500.
+  if (isMarketplaceError(error) && error.code === "validation_failed") {
+    invalidQuery = true;
+    Astro.response.status = 400;
+  } else {
+    throw error;
+  }
+}
+
+function pageHref(nextCursor: string): string {
+  const next = new URLSearchParams();
+  for (const [key, value] of Object.entries(filters)) if (value) next.set(key, value);
+  next.set("cursor", nextCursor);
+  return `/packages?${next.toString()}`;
+}
+
+const filtered = Object.entries(filters).some(([, value]) => Boolean(value));
+const activeCategory = categories.find((c) => c.slug === filters.category);
+const heading = filters.q ? `Results for “${filters.q}”` : activeCategory ? activeCategory.name : "All packages";
+---
+
+<BaseLayout
+  title={filters.q ? `Search: ${filters.q}` : "Packages"}
+  seo={packagesIndexSeo(vars.PUBLIC_SITE_URL, result?.items ?? [], !filtered && !cursor && !invalidQuery)}
+>
+  <section class="container-page py-10">
+    <h1 class="font-display text-4xl sm:text-5xl">{heading}</h1>
+    {
+      filters.publisher && (
+        <p class="mt-2 text-sm text-muted">
+          Publisher <span class="font-mono">{filters.publisher}</span> ·{" "}
+          <a href="/packages" class="text-accent underline-offset-4 hover:underline">clear</a>
+        </p>
+      )
+    }
+    <div class="mt-6">
+      <PackageFilters values={filters} categories={categories} />
+    </div>
+  </section>
+
+  <section class="container-page pb-12" aria-live="polite">
+    {
+      invalidQuery && (
+        <p role="alert" class="rounded-card border border-line bg-raised p-6 text-warning">
+          Those filters could not be understood. Check the search text and filters and try again.
+        </p>
+      )
+    }
+    {
+      result && (
+        <PackageGrid
+          items={result.items}
+          nextHref={result.nextCursor ? pageHref(result.nextCursor) : null}
+          emptyTitle="No packages found"
+          emptyMessage={
+            filtered
+              ? "Nothing matches these filters. Try a different search or fewer filters."
+              : "Packages appear here once they are published to npm with the clarkcant keyword and indexed."
+          }
+        />
+      )
+    }
+  </section>
+</BaseLayout>

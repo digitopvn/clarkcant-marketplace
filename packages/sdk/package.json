@@ -1,0 +1,23 @@
+{
+  "name": "@marketplace/sdk",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "openapi:generate": "node --import ./scripts/register-workers-stub.mjs --import tsx scripts/generate-openapi.ts"
+  },
+  "dependencies": {
+    "openapi-fetch": "0.17.0"
+  },
+  "devDependencies": {
+    "@marketplace/api": "workspace:*",
+    "@marketplace/auth": "workspace:*",
+    "@marketplace/contracts": "workspace:*",
+    "@marketplace/marketplace": "workspace:*",
+    "openapi-typescript": "7.13.0"
+  }
+}

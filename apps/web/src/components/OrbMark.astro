@@ -1,0 +1,38 @@
+---
+/**
+ * The ClarkCant Orb (same artwork as `/favicon.svg`), drawn inline next to the wordmark. Decorative: the link it
+ * sits in carries the accessible name. `id` keeps gradient and clip ids unique when the mark appears more than once.
+ */
+interface Props {
+  id: string;
+  class?: string;
+}
+
+const { id, class: className } = Astro.props;
+const body = `${id}-body`;
+const band = `${id}-band`;
+const clip = `${id}-clip`;
+---
+
+<svg class:list={["orb-mark", className]} viewBox="0 0 64 64" aria-hidden="true" focusable="false">
+  <defs>
+    <radialGradient id={body} cx="50%" cy="50%" r="50%">
+      <stop offset="0" stop-color="#1a1433"></stop>
+      <stop offset="1" stop-color="#07080f"></stop>
+    </radialGradient>
+    <linearGradient id={band} x1="0" x2="1">
+      <stop offset=".08" stop-color="#82f4ff" stop-opacity="0"></stop>
+      <stop offset=".3" stop-color="#82f4ff"></stop>
+      <stop offset=".5" stop-color="#fff"></stop>
+      <stop offset=".7" stop-color="#ff7bff"></stop>
+      <stop offset=".92" stop-color="#8e6cff" stop-opacity="0"></stop>
+    </linearGradient>
+    <clipPath id={clip}><circle cx="32" cy="32" r="28"></circle></clipPath>
+  </defs>
+  <circle cx="32" cy="32" r="28" fill={`url(#${body})`}></circle>
+  <g clip-path={`url(#${clip})`}>
+    <ellipse cx="32" cy="33" rx="27" ry="6" fill={`url(#${band})`} opacity=".9"></ellipse>
+    <ellipse cx="32" cy="33" rx="16" ry="1.6" fill="#fff"></ellipse>
+  </g>
+  <circle cx="32" cy="32" r="27.5" fill="none" stroke="#c5a9ff" stroke-opacity=".45"></circle>
+</svg>

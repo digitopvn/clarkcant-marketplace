@@ -1,0 +1,138 @@
+/* Brand tokens copied verbatim from clarkcant-web/assets/css/tokens.css. Keep in sync with the brand source. */
+
+/*
+ * Design tokens.
+ *
+ * Quiet chrome, one loud thing. Surfaces are near-neighbours and the accent is a pale lavender,
+ * following the product's own tokens (packages/design-tokens). The only saturated colour on the
+ * site is the Orb's spectrum, and it is reserved for places the Orb is allowed to be magical.
+ */
+
+:root {
+  --font-display: "Instrument Serif", "Iowan Old Style", Georgia, serif;
+  --font-sans: "Geist", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "Geist Mono", ui-monospace, "SF Mono", Menlo, monospace;
+
+  --step--1: clamp(0.8125rem, 0.79rem + 0.1vw, 0.875rem);
+  --step-0: clamp(1rem, 0.96rem + 0.2vw, 1.0625rem);
+  --step-1: clamp(1.125rem, 1.05rem + 0.35vw, 1.3125rem);
+  --step-2: clamp(1.5rem, 1.3rem + 0.9vw, 2rem);
+  --step-3: clamp(2.25rem, 1.7rem + 2.6vw, 3.75rem);
+  --step-4: clamp(2.9rem, 1.9rem + 4.8vw, 6rem);
+  --step-5: clamp(3.4rem, 1.8rem + 7.5vw, 8.5rem);
+
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.5rem;
+  --space-6: 2rem;
+  --space-7: 3rem;
+  --space-8: 4.5rem;
+  --space-9: 7rem;
+  --section-pad: clamp(5rem, 3rem + 9vw, 11rem);
+  --gutter: clamp(1rem, 0.5rem + 2.5vw, 2.5rem);
+  --max: 76rem;
+
+  --radius-sm: 10px;
+  --radius: 16px;
+  --radius-lg: 24px;
+  --radius-pill: 999px;
+
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-spring: cubic-bezier(0.34, 1.4, 0.64, 1);
+  --dur-micro: 140ms;
+  --dur: 240ms;
+  --dur-slow: 700ms;
+
+  --spectrum: linear-gradient(90deg, #82f4ff 0%, #fff 22%, #ffd86b 45%, #ff7bff 72%, #8e6cff 100%);
+
+  /* The Orb's glass stays ink-dark in both themes: a dark pearl on paper, a lit lens in the dark. */
+  --orb-body: 0.012 0.016 0.035;
+
+  color-scheme: light;
+  --bg: #f6f5f2;
+  --bg-raised: #fbfaf8;
+  --card: #ffffff;
+  --elevated: #ffffff;
+  --code-bg: #f1f0ec;
+  --line: #e4e2dc;
+  --line-strong: #d3d1ca;
+  --text: #17171a;
+  --text-muted: #5c5e66;
+  --text-faint: #696c74;
+  --accent: #6b5fa8;
+  --accent-soft: #ece9f7;
+  --on-accent: #ffffff;
+  --success: #3f6b52;
+  --warning: #7a5b1e;
+  --focus: #5b4fa0;
+  --user-bubble: #ecebe6;
+  --shadow: 0 1px 2px rgb(20 20 30 / 0.04), 0 8px 28px -12px rgb(20 20 30 / 0.14);
+  --shadow-lift: 0 2px 4px rgb(20 20 30 / 0.05), 0 22px 50px -20px rgb(40 30 90 / 0.28);
+  --halo: rgb(142 108 255 / 0.18);
+  --grain-opacity: 0.035;
+  --spectrum-filter: saturate(1.2) brightness(0.72) contrast(1.1);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --bg: #0c0d11;
+    --bg-raised: #111217;
+    --card: #15161b;
+    --elevated: #1b1c22;
+    --code-bg: #0f1015;
+    --line: #25262c;
+    --line-strong: #33343b;
+    --text: #ececef;
+    --text-muted: #a3a5ae;
+    --text-faint: #8a8d97;
+    --accent: #b8aedc;
+    --accent-soft: #221f33;
+    --on-accent: #111317;
+    --success: #8ebca3;
+    --warning: #d1ac68;
+    --focus: #d8d2f0;
+    --user-bubble: #1f2027;
+    --shadow: 0 1px 2px rgb(0 0 0 / 0.3), 0 12px 32px -14px rgb(0 0 0 / 0.6);
+    --shadow-lift: 0 2px 6px rgb(0 0 0 / 0.35), 0 28px 60px -24px rgb(0 0 0 / 0.75);
+    --halo: rgb(142 108 255 / 0.22);
+    --grain-opacity: 0.05;
+    --spectrum-filter: saturate(0.9);
+  }
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #0c0d11;
+  --bg-raised: #111217;
+  --card: #15161b;
+  --elevated: #1b1c22;
+  --code-bg: #0f1015;
+  --line: #25262c;
+  --line-strong: #33343b;
+  --text: #ececef;
+  --text-muted: #a3a5ae;
+  --text-faint: #8a8d97;
+  --accent: #b8aedc;
+  --accent-soft: #221f33;
+  --on-accent: #111317;
+  --success: #8ebca3;
+  --warning: #d1ac68;
+  --focus: #d8d2f0;
+  --user-bubble: #1f2027;
+  --shadow: 0 1px 2px rgb(0 0 0 / 0.3), 0 12px 32px -14px rgb(0 0 0 / 0.6);
+  --shadow-lift: 0 2px 6px rgb(0 0 0 / 0.35), 0 28px 60px -24px rgb(0 0 0 / 0.75);
+  --halo: rgb(142 108 255 / 0.22);
+  --grain-opacity: 0.05;
+  --spectrum-filter: saturate(0.9);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --dur-micro: 0ms;
+    --dur: 0ms;
+    --dur-slow: 0ms;
+  }
+}

@@ -1,0 +1,47 @@
+---
+/**
+ * Exposes the package detail page to in-browser agents through WebMCP (see `@marketplace/webmcp`). Browsers without
+ * WebMCP load nothing beyond this element's small script; tools are withdrawn when the element leaves the page.
+ */
+interface Props {
+  name: string;
+}
+
+const { name } = Astro.props;
+---
+
+<webmcp-package-tools data-package={name} hidden></webmcp-package-tools>
+
+<script>
+  function hasModelContext(): boolean {
+    return "modelContext" in document || "modelContext" in navigator;
+  }
+
+  class WebmcpPackageTools extends HTMLElement {
+    private controller: AbortController | null = null;
+
+    connectedCallback() {
+      const packageName = this.dataset.package;
+      if (!packageName || !hasModelContext()) return;
+      const controller = new AbortController();
+      this.controller = controller;
+      void Promise.all([import("@marketplace/sdk"), import("@marketplace/webmcp")])
+        .then(([sdk, webmcp]) => {
+          if (controller.signal.aborted) return;
+          const client = sdk.createMarketplaceClient({ baseUrl: location.origin, credentials: "same-origin" });
+          webmcp.registerWebMcpTools(
+            webmcp.packagePageTools({ client, packageName, writeClipboard: (text) => navigator.clipboard.writeText(text) }),
+            { signal: controller.signal },
+          );
+        })
+        .catch((error: unknown) => console.warn("WebMCP: package tools unavailable", error));
+    }
+
+    disconnectedCallback() {
+      this.controller?.abort();
+      this.controller = null;
+    }
+  }
+
+  if (!customElements.get("webmcp-package-tools")) customElements.define("webmcp-package-tools", WebmcpPackageTools);
+</script>

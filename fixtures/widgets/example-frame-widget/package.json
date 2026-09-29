@@ -1,0 +1,14 @@
+{
+  "name": "@clarkcant/example-frame-widget",
+  "version": "1.0.0",
+  "description": "Example ClarkCant widget that renders a titled frame. Used to verify marketplace indexing end to end.",
+  "keywords": ["clarkcant", "clarkcant-widget", "widgets"],
+  "license": "MIT",
+  "homepage": "https://github.com/digitopvn/clarkcant-marketplace/tree/dev/fixtures/widgets/example-frame-widget#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/digitopvn/clarkcant-marketplace.git",
+    "directory": "fixtures/widgets/example-frame-widget"
+  },
+  "files": ["clarkcant.json", "README.md", "LICENSE", "widgets", "previews"]
+}

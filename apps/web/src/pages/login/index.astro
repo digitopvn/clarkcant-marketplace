@@ -1,0 +1,32 @@
+---
+import AuthForm from "../../components/auth/AuthForm";
+import { safeNextPath } from "../../components/auth/request";
+import BaseLayout from "../../layouts/BaseLayout.astro";
+import { isGithubSignInEnabled } from "../../server/auth";
+
+export const prerender = false;
+
+const next = Astro.url.searchParams.get("next");
+// An OAuth authorization in progress arrives here with its signed query (client_id, sig, ...) and must stay on it.
+const oauthInProgress = Astro.url.searchParams.has("client_id");
+if (Astro.locals.actor.type !== "anonymous" && !oauthInProgress) {
+  return Astro.redirect(safeNextPath(next), 302);
+}
+const githubEnabled = isGithubSignInEnabled();
+const signupHref = next ? `/signup?next=${encodeURIComponent(next)}` : "/signup";
+---
+
+<BaseLayout title="Sign in" description="Sign in to ClarkCant Marketplace.">
+  <div class="container-page max-w-md py-16">
+    <h1 class="font-display text-4xl">Sign in</h1>
+    {
+      oauthInProgress && (
+        <p class="mt-2 text-sm text-muted">An application is asking to access your account. Sign in to review the request.</p>
+      )
+    }
+    <div class="mt-8 rounded-card border border-line bg-card p-6 shadow-card">
+      <AuthForm client:load mode="login" githubEnabled={githubEnabled} next={next} />
+    </div>
+    <p class="mt-6 text-sm text-muted">New here? <a href={signupHref} class="text-accent">Create an account</a></p>
+  </div>
+</BaseLayout>

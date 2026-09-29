@@ -1,0 +1,24 @@
+{
+  "name": "@marketplace/mcp",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "@better-auth/oauth-provider": "1.7.6",
+    "@marketplace/auth": "workspace:*",
+    "@marketplace/contracts": "workspace:*",
+    "@marketplace/marketplace": "workspace:*",
+    "@marketplace/sdk": "workspace:*",
+    "@modelcontextprotocol/server": "2.2.0",
+    "zod": "4.6.5"
+  },
+  "devDependencies": {
+    "@modelcontextprotocol/client": "2.2.0"
+  }
+}

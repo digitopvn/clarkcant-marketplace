@@ -1,0 +1,74 @@
+---
+import { describeOAuthClient } from "@marketplace/marketplace";
+
+import ConsentForm from "../../components/auth/ConsentForm";
+import BaseLayout from "../../layouts/BaseLayout.astro";
+import { createRequestContext } from "../../server/request-context";
+
+export const prerender = false;
+
+const params = Astro.url.searchParams;
+if (Astro.locals.actor.type !== "user") return Astro.redirect(`/login${Astro.url.search}`, 302);
+
+const clientId = params.get("client_id") ?? "";
+const client = clientId ? await describeOAuthClient(createRequestContext().deps, clientId) : null;
+const scopes = (params.get("scope") ?? "").split(" ").filter((scope) => scope !== "");
+
+const SCOPE_TEXT: Record<string, string> = {
+  openid: "Confirm who you are",
+  profile: "See your name",
+  email: "See your email address",
+  offline_access: "Stay connected while you are away (refresh tokens)",
+  "account:read": "Read your account, publishers, tokens and linked devices",
+  "account:write": "Change your account, link devices and manage your data",
+  "devices:link": "Link, list and unlink ClarkCant installs on your account",
+  "packages:submit": "Submit packages on your behalf",
+  "publishers:write": "Manage your publishers",
+  "pages:write": "Edit marketplace pages you can edit",
+  "pages:publish": "Publish marketplace pages",
+  "media:write": "Upload media",
+  "packages:curate": "Curate packages",
+};
+---
+
+<BaseLayout title="Authorize application">
+  <div class="container-page max-w-md py-16">
+    <h1 class="font-display text-4xl">Authorize application</h1>
+    <div class="mt-8 rounded-card border border-line bg-card p-6 shadow-card">
+      {
+        client && !client.disabled ? (
+          <>
+            <p>
+              <strong>{client.name ?? client.clientId}</strong> wants to access your ClarkCant Marketplace account.
+            </p>
+            {/* Clients register themselves (RFC 7591) and nothing verifies them, so their name and URI are claims. */}
+            <p class="mt-2 text-sm">
+              <span class="rounded border border-line px-1.5 py-0.5 text-xs font-medium text-warning">Unverified client</span>
+              <span class="ml-1 text-muted">
+                Its name{client.uri ? " and website were" : " was"} supplied by the application itself and not checked
+                by ClarkCant. Continue only if you started this sign-in.
+              </span>
+            </p>
+            <p class="mt-1 text-xs text-faint">
+              Client ID <code class="font-mono">{client.clientId}</code>
+            </p>
+            {client.uri && <p class="mt-1 text-sm text-muted">{client.uri}</p>}
+            <ul class="my-5 list-disc space-y-1 pl-5 text-sm">
+              {scopes.map((scope) => (
+                <li>
+                  {SCOPE_TEXT[scope] ?? scope} <code class="font-mono text-xs text-faint">{scope}</code>
+                </li>
+              ))}
+            </ul>
+            <p class="mb-4 text-xs text-faint">
+              Applications never receive admin access. You can revoke this access from your account page at any time.
+            </p>
+            <ConsentForm client:load />
+          </>
+        ) : (
+          <p role="alert" class="text-warning">This authorization request is invalid or the application is disabled.</p>
+        )
+      }
+    </div>
+  </div>
+</BaseLayout>

@@ -1,0 +1,164 @@
+---
+import { isMarketplaceError } from "@marketplace/contracts";
+import {
+  HOME_PAGE_SLUG,
+  getPublishedPage,
+  listCategories,
+  listFeaturedPackages,
+  listLatestPackages,
+  renderPageDocument,
+} from "@marketplace/marketplace";
+
+import { organizationJsonLd, webSiteJsonLd } from "@marketplace/seo";
+
+import PackageCard from "../components/package/PackageCard.astro";
+import RenderedPage from "../components/page-engine/RenderedPage.astro";
+import PackageSearchForm from "../components/PackageSearchForm.astro";
+import BaseLayout from "../layouts/BaseLayout.astro";
+import { createRequestContext } from "../server/request-context";
+
+export const prerender = false;
+
+const { deps, vars } = createRequestContext();
+
+// A published "home" page from the page builder replaces the built-in landing below.
+async function loadLanding() {
+  try {
+    const page = await getPublishedPage(deps, HOME_PAGE_SLUG);
+    const rendered = await renderPageDocument(deps, page.document, { mode: "public", siteUrl: vars.PUBLIC_SITE_URL, path: "/" });
+    return { page, rendered };
+  } catch (error) {
+    if (isMarketplaceError(error) && error.code === "not_found") return null;
+    throw error;
+  }
+}
+const landing = await loadLanding();
+if (landing) {
+  Astro.response.headers.set("ETag", `"${landing.page.revisionId}"`);
+  if (landing.page.document.meta.noindex) Astro.response.headers.set("X-Robots-Tag", "noindex");
+}
+
+const [featured, latest, categories] = landing
+  ? [[], [], []]
+  : await Promise.all([listFeaturedPackages(deps), listLatestPackages(deps), listCategories(deps)]);
+const hasPackages = featured.length > 0 || latest.length > 0;
+---
+
+<BaseLayout
+  title={landing?.page.document.meta.title ?? "ClarkCant Marketplace"}
+  description={landing?.page.document.meta.description || undefined}
+  seo={{
+    path: "/",
+    image: landing?.rendered.socialImage ?? null,
+    noindex: landing?.page.document.meta.noindex ?? false,
+    locale: landing?.page.document.meta.locale,
+    jsonLd: [webSiteJsonLd(vars.PUBLIC_SITE_URL), organizationJsonLd()],
+  }}
+>
+  {
+    landing ? (
+      <Fragment>
+        {/* Search stays on the home page whichever landing is shown, on the same left edge as the page content. */}
+        <div class="container-page pt-6">
+          <div class="max-w-xl">
+            <PackageSearchForm />
+          </div>
+        </div>
+        <div class="home-landing">
+          <RenderedPage html={landing.rendered.html} structuredData={landing.rendered.structuredData} />
+        </div>
+      </Fragment>
+    ) : (
+      <Fragment>
+  <section class="container-page py-14">
+    <p class="font-mono text-xs uppercase tracking-widest text-faint">ClarkCant Marketplace</p>
+    <h1 class="mt-3 max-w-3xl font-display text-5xl leading-tight sm:text-6xl">
+      Widgets, tools, and themes for ClarkCant, <em>curated</em> from npm.
+    </h1>
+    <p class="mt-4 max-w-2xl text-muted">
+      Browse packages that declare a ClarkCant manifest. Install them from inside ClarkCant, which reviews every
+      permission a package asks for before it runs.
+    </p>
+    <div class="mt-8 max-w-xl">
+      <PackageSearchForm />
+    </div>
+  </section>
+
+  {
+    categories.length > 0 && (
+      <section class="container-page pb-10" aria-labelledby="categories-heading">
+        <h2 id="categories-heading" class="sr-only">
+          Categories
+        </h2>
+        <ul class="flex flex-wrap gap-2">
+          {categories.map((category) => (
+            <li>
+              <a
+                href={`/packages?category=${encodeURIComponent(category.slug)}`}
+                class="inline-flex items-center gap-2 rounded-full border border-line px-3 py-1.5 text-sm text-muted hover:border-accent hover:text-ink"
+              >
+                {category.name}
+                <span class="font-mono text-xs text-faint">{category.packageCount}</span>
+              </a>
+            </li>
+          ))}
+        </ul>
+      </section>
+    )
+  }
+
+  {
+    !hasPackages && (
+      <section class="container-page pb-10">
+        <div class="rounded-card border border-dashed border-line bg-raised p-10 text-center">
+          <h2 class="font-display text-3xl">No packages listed yet</h2>
+          <p class="mx-auto mt-2 max-w-xl text-muted">
+            Packages appear here once they are indexed from npm and reviewed. Publishing opens soon.
+          </p>
+        </div>
+      </section>
+    )
+  }
+
+  {
+    featured.length > 0 && (
+      <section class="container-page pb-12" aria-labelledby="featured-heading">
+        <h2 id="featured-heading" class="mb-5 font-display text-3xl">
+          Featured
+        </h2>
+        <ul class="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+          {featured.map((pkg) => (
+            <li>
+              <PackageCard pkg={pkg} />
+            </li>
+          ))}
+        </ul>
+      </section>
+    )
+  }
+
+  {
+    latest.length > 0 && (
+      <section class="container-page pb-12" aria-labelledby="latest-heading">
+        <div class="mb-5 flex items-baseline justify-between gap-4">
+          <h2 id="latest-heading" class="font-display text-3xl">
+            Latest
+          </h2>
+          <a href="/packages" class="text-sm text-accent underline-offset-4 hover:underline">
+            All packages
+          </a>
+        </div>
+        <ul class="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+          {latest.map((pkg) => (
+            <li>
+              <PackageCard pkg={pkg} />
+            </li>
+          ))}
+        </ul>
+      </section>
+    )
+  }
+      </Fragment>
+    )
+  }
+</BaseLayout>

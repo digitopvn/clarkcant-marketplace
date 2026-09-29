@@ -1,0 +1,21 @@
+{
+  "name": "@marketplace/marketplace",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "@marketplace/contracts": "workspace:*",
+    "@marketplace/db": "workspace:*",
+    "@marketplace/markdown": "workspace:*",
+    "@marketplace/media": "workspace:*",
+    "@marketplace/page-engine": "workspace:*",
+    "drizzle-orm": "0.45.3",
+    "zod": "4.6.5"
+  }
+}

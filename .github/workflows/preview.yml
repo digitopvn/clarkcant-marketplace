@@ -1,0 +1,143 @@
+name: Preview
+
+# Uploads a preview version of the staging web Worker under the alias pr-<number> and comments its URL.
+#
+# Limits (docs/deployment.md#pr-previews):
+# - Same-repository PRs only; fork PRs never see Cloudflare credentials, so the job does not run for them.
+# - A preview is a Worker version of the staging Worker: it uses the staging D1 database, R2 bucket and queue, and
+#   writes it makes land in staging data. Previews never apply migrations, so a PR that adds or changes files in
+#   migrations/ is not previewed (its code would run against a schema that does not have those changes yet).
+# - Nothing is deployed: `wrangler versions upload` leaves staging traffic on the deployed version.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+concurrency:
+  group: preview-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions: {}
+
+jobs:
+  upload:
+    name: Upload preview version
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: staging
+    permissions:
+      contents: read
+    outputs:
+      status: ${{ steps.result.outputs.status }}
+      url: ${{ steps.upload.outputs.url }}
+    env:
+      PREVIEW_ALIAS: pr-${{ github.event.pull_request.number }}
+    steps:
+      - name: Check configuration
+        id: config
+        env:
+          HAS_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN != '' }}
+          HAS_ACCOUNT: ${{ vars.CLOUDFLARE_ACCOUNT_ID != '' }}
+        run: |
+          if [ "$HAS_TOKEN" = "true" ] && [ "$HAS_ACCOUNT" = "true" ]; then
+            echo "available=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::CLOUDFLARE_API_TOKEN (secret) or CLOUDFLARE_ACCOUNT_ID (variable) is not configured; skipping preview upload."
+            echo "available=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/checkout@v5
+        if: steps.config.outputs.available == 'true'
+        with:
+          # The merge commit plus its parents: HEAD^1 is the base branch the PR is merged onto.
+          fetch-depth: 2
+          persist-credentials: false
+
+      - name: Refuse PRs that change D1 migrations
+        id: migrations
+        if: steps.config.outputs.available == 'true'
+        run: |
+          set -euo pipefail
+          changed=$(git diff --name-only HEAD^1 HEAD -- migrations/)
+          if [ -n "$changed" ]; then
+            echo "::notice::This PR changes D1 migrations; previews share the staging database and never migrate it, so no preview is uploaded."
+            echo "$changed"
+            echo "safe=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "safe=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: pnpm/action-setup@v6
+        if: steps.migrations.outputs.safe == 'true'
+
+      - uses: actions/setup-node@v5
+        if: steps.migrations.outputs.safe == 'true'
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      # Install and build run PR-controlled code, so the Cloudflare token is not in their environment.
+      - name: Install
+        if: steps.migrations.outputs.safe == 'true'
+        run: pnpm install --frozen-lockfile
+
+      - name: Build (staging configuration)
+        if: steps.migrations.outputs.safe == 'true'
+        run: CLOUDFLARE_ENV=staging pnpm --filter @marketplace/web build
+
+      - name: Upload preview version
+        id: upload
+        if: steps.migrations.outputs.safe == 'true'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set -euo pipefail
+          pnpm --filter @marketplace/web exec wrangler versions upload --preview-alias "$PREVIEW_ALIAS" | tee /tmp/upload.log
+          url=$(grep -oE "https://${PREVIEW_ALIAS}-[A-Za-z0-9.-]+" /tmp/upload.log | head -n1 || true)
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+
+      - name: Result
+        id: result
+        if: always()
+        env:
+          AVAILABLE: ${{ steps.config.outputs.available }}
+          SAFE: ${{ steps.migrations.outputs.safe }}
+          UPLOADED: ${{ steps.upload.outcome }}
+        run: |
+          if [ "$AVAILABLE" != "true" ]; then status=unconfigured
+          elif [ "$SAFE" = "false" ]; then status=migrations
+          elif [ "$UPLOADED" = "success" ]; then status=uploaded
+          else status=failed
+          fi
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+
+  comment:
+    name: Comment preview URL
+    needs: upload
+    if: always() && (needs.upload.outputs.status == 'uploaded' || needs.upload.outputs.status == 'migrations')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      pull-requests: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      PR_NUMBER: ${{ github.event.pull_request.number }}
+      HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+      STATUS: ${{ needs.upload.outputs.status }}
+      PREVIEW_URL: ${{ needs.upload.outputs.url }}
+      PREVIEW_ALIAS: pr-${{ github.event.pull_request.number }}
+    steps:
+      - name: Comment
+        run: |
+          short="${HEAD_SHA::7}"
+          if [ "$STATUS" = "migrations" ]; then
+            body="No preview for $short: this PR changes D1 migrations, and previews share the staging database without migrating it."
+          elif [ -n "$PREVIEW_URL" ]; then
+            body="Preview for $short: $PREVIEW_URL (staging data; writes are real)"
+          else
+            body="Preview version uploaded for $short as alias $PREVIEW_ALIAS; see the workflow log for its URL."
+          fi
+          gh pr comment "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --edit-last --body "$body" \
+            || gh pr comment "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --body "$body"

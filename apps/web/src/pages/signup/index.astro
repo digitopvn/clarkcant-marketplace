@@ -1,0 +1,24 @@
+---
+import AuthForm from "../../components/auth/AuthForm";
+import { safeNextPath } from "../../components/auth/request";
+import BaseLayout from "../../layouts/BaseLayout.astro";
+import { isGithubSignInEnabled } from "../../server/auth";
+
+export const prerender = false;
+
+const next = Astro.url.searchParams.get("next");
+if (Astro.locals.actor.type !== "anonymous") return Astro.redirect(safeNextPath(next), 302);
+const githubEnabled = isGithubSignInEnabled();
+const loginHref = next ? `/login?next=${encodeURIComponent(next)}` : "/login";
+---
+
+<BaseLayout title="Create an account" description="Create a ClarkCant Marketplace account.">
+  <div class="container-page max-w-md py-16">
+    <h1 class="font-display text-4xl">Create an account</h1>
+    <p class="mt-2 text-sm text-muted">Publish and manage packages as a publisher. Your ClarkCant apps keep working without an account.</p>
+    <div class="mt-8 rounded-card border border-line bg-card p-6 shadow-card">
+      <AuthForm client:load mode="signup" githubEnabled={githubEnabled} next={next} />
+    </div>
+    <p class="mt-6 text-sm text-muted">Already have an account? <a href={loginHref} class="text-accent">Sign in</a></p>
+  </div>
+</BaseLayout>

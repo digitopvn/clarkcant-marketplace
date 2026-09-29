@@ -1,0 +1,7 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "types": ["node"]
+  },
+  "include": ["drizzle.config.ts", "vitest.config.ts", "vitest.d1.ts", "packages/*/vitest.config.ts", "playwright.config.ts", "eslint.config.js", "e2e", "scripts"]
+}

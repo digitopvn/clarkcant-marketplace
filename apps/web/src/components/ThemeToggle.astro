@@ -1,0 +1,68 @@
+---
+/**
+ * Cycles System → Light → Dark. The head script in BaseLayout applies a stored choice before paint (only with
+ * preferences consent); this reads the applied theme and changes it. Plain DOM script, so public pages ship no UI
+ * framework runtime for a single button.
+ */
+---
+
+<button
+  type="button"
+  class="rounded-full px-3 py-1.5 text-muted hover:bg-accent-soft hover:text-ink"
+  data-theme-toggle
+  aria-label="Theme: System. Switch to Light."
+>
+  System
+</button>
+
+<script>
+  import { CONSENT_EVENT, THEME_STORAGE_KEY, preferencesAllowed, type ConsentState } from "./consent/consent";
+
+  type ThemeChoice = "system" | "light" | "dark";
+
+  const ORDER: readonly ThemeChoice[] = ["system", "light", "dark"];
+  const LABELS: Record<ThemeChoice, string> = { system: "System", light: "Light", dark: "Dark" };
+
+  function currentChoice(): ThemeChoice {
+    const theme = document.documentElement.dataset.theme;
+    return theme === "light" || theme === "dark" ? theme : "system";
+  }
+
+  function nextChoice(choice: ThemeChoice): ThemeChoice {
+    return ORDER[(ORDER.indexOf(choice) + 1) % ORDER.length] ?? "system";
+  }
+
+  /** Stores the choice only when the visitor allowed preference storage; otherwise it lasts for this page view. */
+  function persist(choice: ThemeChoice, allowed: boolean): void {
+    try {
+      if (!allowed || choice === "system") localStorage.removeItem(THEME_STORAGE_KEY);
+      else localStorage.setItem(THEME_STORAGE_KEY, choice);
+    } catch {
+      // Storage unavailable (privacy modes): the choice still applies for this page view.
+    }
+  }
+
+  function render(button: HTMLButtonElement, choice: ThemeChoice): void {
+    button.textContent = LABELS[choice];
+    button.setAttribute("aria-label", `Theme: ${LABELS[choice]}. Switch to ${LABELS[nextChoice(choice)]}.`);
+  }
+
+  const buttons = document.querySelectorAll<HTMLButtonElement>("button[data-theme-toggle]");
+  for (const button of buttons) {
+    render(button, currentChoice());
+    button.addEventListener("click", () => {
+      const choice = nextChoice(currentChoice());
+      const root = document.documentElement;
+      if (choice === "system") delete root.dataset.theme;
+      else root.dataset.theme = choice;
+      persist(choice, preferencesAllowed());
+      for (const other of buttons) render(other, choice);
+    });
+  }
+
+  // Saving or withdrawing consent stores or erases the current choice immediately.
+  document.addEventListener(CONSENT_EVENT, (event) => {
+    const detail = (event as CustomEvent<ConsentState>).detail;
+    persist(currentChoice(), detail?.preferences === true);
+  });
+</script>
