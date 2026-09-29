@@ -97,6 +97,7 @@ Markdown form, a `.md` twin linked with `<link rel="alternate" type="text/markdo
 | `/` | `/index.md` | featured and latest packages, categories |
 | `/<slug>` (builder pages) | `/<slug>.md` | page engine `renderMarkdown` for the live revision (same as `GET /api/v1/pages/{slug}?format=md`) |
 | `/packages/<name>` | `/packages/<name>.md` | package metadata and sanitized README |
+| `/packages`, `/collections` | `/packages.md`, `/collections.md` | catalogue listings (with `ItemList` JSON-LD on the HTML) |
 | `/categories/<slug>`, `/collections/<slug>` | `.md` | listings |
 
 Machine-readable indexes: `/robots.txt` (indexing allowed only when `ENVIRONMENT=production`), `/sitemap.xml`
@@ -110,8 +111,9 @@ otherwise the static `/og-default.png`. The indexer renders package cards as SVG
 accept SVG, so SVG cards are never advertised. Rasterising cards on the Worker (resvg-wasm) was not adopted: it
 adds a large WASM module to the Worker bundle and needs TTF font files the project does not ship.
 
-The share bar (`components/share/ShareBar.astro`) offers Copy URL, Copy as Markdown (the twin), the native Share
-sheet, and "Ask ChatGPT/Claude/Gemini". ChatGPT and Claude accept a prefilled prompt in the URL; Gemini does not,
+The share bar (`components/share/ShareBar.astro`) leads with Copy as Markdown (the twin) and a View as Markdown
+link, then Copy URL, the native Share sheet, and "Ask ChatGPT/Claude/Perplexity/Gemini" (adapters in
+`packages/seo/src/share.ts`). ChatGPT, Claude and Perplexity accept a prefilled prompt in the URL; Gemini does not,
 so the prompt is copied and Gemini opens empty. Every action has a manual copy fallback.
 
 ## Data
