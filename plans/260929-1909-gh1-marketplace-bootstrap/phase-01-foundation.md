@@ -1,6 +1,6 @@
 # Phase 01 — Foundation (M0 + shared domain skeleton)
 
-Status: pending · Wave 1 · Blocks all other phases.
+Status: completed (2026-09-29, report: plans/reports/fullstack-developer-260929-1920-phase-01-foundation.md) · Wave 1 · Blocks all other phases.
 
 ## Goal
 A pnpm monorepo where `pnpm install && pnpm verify && pnpm build` pass, `pnpm dev` boots the
