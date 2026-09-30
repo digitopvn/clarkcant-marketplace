@@ -81,6 +81,11 @@ const LANDING: DefaultPage = {
               question: "Does a listing grant a package any permissions?",
               answer: "No. The marketplace only lists and describes packages; npm distributes them, and ClarkCant decides what they may do.",
             },
+            {
+              question: "How do I publish a package?",
+              answer:
+                "Publish it to npm with a clarkcant.json manifest and the \"clarkcant\" keyword. The marketplace indexes it automatically; the publisher guide at /publish has the details.",
+            },
           ],
         },
       },
@@ -140,10 +145,121 @@ const ABOUT: DefaultPage = {
   },
 };
 
-/** Landing, about and the policy pages (terms, privacy, cookies, refunds, GDPR, security, subprocessors). */
+/** The publisher guide. Every step mirrors what the indexer and the publish API enforce today. */
+const PUBLISH: DefaultPage = {
+  slug: "publish",
+  kind: "custom",
+  document: {
+    schemaVersion: 1,
+    layout: { id: "editorial", version: 1 },
+    meta: {
+      title: "Publish a package to the ClarkCant Marketplace",
+      description:
+        "How to list a ClarkCant widget, tool or theme: publish it to npm with a clarkcant.json manifest and a ClarkCant keyword, then let the marketplace index it.",
+      locale: "en",
+      noindex: false,
+    },
+    blocks: [
+      {
+        id: "publish-hero",
+        type: "hero",
+        version: 1,
+        props: {
+          eyebrow: "For package authors",
+          title: "Publish a package",
+          subtitle:
+            "There is no upload form. You publish to npm as usual; the marketplace finds packages that declare a ClarkCant manifest, checks them and lists them.",
+          align: "start",
+          tone: "plain",
+        },
+      },
+      {
+        id: "publish-body",
+        type: "rich-text",
+        version: 1,
+        props: {
+          width: "prose",
+          markdown: [
+            "## 1. Add a `clarkcant.json` manifest",
+            "",
+            "Put `clarkcant.json` at the root of the package. It declares what the package contains and every permission it asks for: network origins, filesystem paths, microphone, camera and lifecycle scripts. A widget manifest looks like this:",
+            "",
+            "```json",
+            "{",
+            '  "schemaVersion": 1,',
+            '  "id": "com.acme.clock",',
+            '  "version": "1.0.0",',
+            '  "displayName": "Clock",',
+            '  "description": "A desk clock for your ClarkCant home screen.",',
+            '  "hostApi": { "min": 1, "max": 1 },',
+            '  "facets": [',
+            '    { "kind": "widget", "id": "com.acme.clock.main@1", "entry": "widgets/main/index.html", "definition": "widgets/main/widget.json", "isolation": "isolated-ui" }',
+            "  ],",
+            '  "requestedCapabilities": [],',
+            '  "permissions": { "networkOrigins": [], "filesystem": [], "microphone": false, "camera": false, "lifecycleScripts": [] },',
+            '  "platforms": ["web"],',
+            '  "publisher": { "id": "acme", "sourceUrl": "https://github.com/acme/clock-widget", "license": "MIT" }',
+            "}",
+            "```",
+            "",
+            "- `version` must equal the version in `package.json`; a mismatch is rejected.",
+            "- Unknown fields are rejected, so keep the manifest to the fields ClarkCant defines.",
+            "- Tools and themes use ClarkCant's install-plan manifest instead (facets such as `tools`, `ui` or `themes`). Both shapes are accepted.",
+            "",
+            "## 2. Describe it for people",
+            "",
+            "- The package `README` is shown on the package page. It is sanitised, and READMEs over 256 KiB are left out.",
+            "- Images in a `previews/` folder (PNG, JPEG, GIF or WebP) become screenshots. `previews/cover.*` is shown first; up to 8 images are kept, 5 MiB each.",
+            "",
+            "## 3. Add a keyword and publish to npm",
+            "",
+            'Add `"clarkcant"` (or `"clarkcant-widget"`) to `keywords` in `package.json`, then run `npm publish`. The packed tarball must stay under 25 MiB.',
+            "",
+            "## 4. Get indexed",
+            "",
+            "The marketplace searches npm for those keywords every six hours and indexes new versions automatically. To index a version right away, sign in, create a personal API token under Account, and submit it:",
+            "",
+            "```sh",
+            "curl -X POST https://marketplace.clarkcant.cc/api/v1/publish/submit \\",
+            '  -H "Authorization: Bearer $CLARK_MARKET_TOKEN" \\',
+            '  -H "Content-Type: application/json" \\',
+            "  -d '{\"name\": \"@acme/clock-widget\", \"version\": \"1.0.0\"}'",
+            "```",
+            "",
+            "The response carries a submission id; `GET /api/v1/publish/submissions/{id}` reports the outcome, including the reason when a version is rejected. The [API reference](/docs/api) documents both calls, and MCP clients can use the `submit_package` tool.",
+            "",
+            "## What indexing checks, and what it does not",
+            "",
+            "Indexing pins the exact npm version, verifies the tarball against the registry's integrity hash, and validates the manifest. A version that passes is **listed**: it passed automated checks and was not reviewed by a person. **Featured** packages are chosen by curators. npm provenance is recorded when present, not verified.",
+            "",
+            "A published version never changes. To fix a rejected or listed version, publish a new version to npm.",
+            "",
+            "## Installing stays with ClarkCant",
+            "",
+            "Being listed grants nothing. People install from inside ClarkCant, which shows every permission your manifest requests before the package runs.",
+          ].join("\n"),
+        },
+      },
+      {
+        id: "publish-cta",
+        type: "cta",
+        version: 1,
+        props: {
+          title: "See how listed packages look",
+          body: "",
+          primary: { label: "Browse packages", href: "/packages" },
+          secondary: { label: "API reference", href: "/docs/api" },
+        },
+      },
+    ],
+  },
+};
+
+/** Landing, about, the publisher guide and the policy pages (terms, privacy, cookies, refunds, GDPR, security, subprocessors). */
 export const DEFAULT_PAGES: readonly DefaultPage[] = [
   LANDING,
   ABOUT,
+  PUBLISH,
   ...LEGAL_PAGES.map((page) => ({ slug: page.slug, kind: "legal" as const, document: page.document })),
 ];
 
