@@ -1,7 +1,7 @@
 name: Deploy
 
 # dev -> staging, main -> production. Each environment's public URL lives in the GitHub
-# environment variable SITE_URL (for example https://clarkcant-marketplace-web-staging.<subdomain>.workers.dev).
+# environment variable SITE_URL (https://staging.marketplace.clarkcant.cc, https://marketplace.clarkcant.cc).
 
 on:
   push:

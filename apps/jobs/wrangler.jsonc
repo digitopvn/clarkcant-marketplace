@@ -48,8 +48,8 @@
       "name": "clarkcant-marketplace-jobs-staging",
       "limits": { "cpu_ms": 30000 },
       "vars": {
-        // Deployed web origin (workers.dev until a custom domain is chosen). ADMIN_EMAILS is a wrangler secret per env.
-        "PUBLIC_SITE_URL": "https://clarkcant-marketplace-web-staging.digitop-vn.workers.dev",
+        // Deployed web origin, served on a Workers Custom Domain in the clarkcant.cc zone. ADMIN_EMAILS is a wrangler secret per env.
+        "PUBLIC_SITE_URL": "https://staging.marketplace.clarkcant.cc",
         "ENVIRONMENT": "staging"
       },
       "d1_databases": [
@@ -86,7 +86,7 @@
       "limits": { "cpu_ms": 30000 },
       "vars": {
         // Deployed web origin; see the staging note.
-        "PUBLIC_SITE_URL": "https://clarkcant-marketplace-web.digitop-vn.workers.dev",
+        "PUBLIC_SITE_URL": "https://marketplace.clarkcant.cc",
         "ENVIRONMENT": "production"
       },
       "d1_databases": [

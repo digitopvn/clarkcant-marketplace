@@ -83,7 +83,7 @@ installation happens in ClarkCant after the user reviews permissions.
 ## Client configuration
 
 Replace `https://<site>` with the marketplace origin, for example
-`https://clarkcant-marketplace-web.digitop-vn.workers.dev`.
+`https://marketplace.clarkcant.cc`.
 
 **Claude:**
 

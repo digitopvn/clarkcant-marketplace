@@ -14,7 +14,7 @@ export const CLI_NAME = "clark-market";
 export const CLI_VERSION = "0.1.0";
 /** The public client id Better Auth accepts for the device flow. */
 export const DEVICE_CLIENT_ID = "clark-market-cli";
-export const DEFAULT_API_URL = "https://clarkcant-marketplace-web.digitop-vn.workers.dev";
+export const DEFAULT_API_URL = "https://marketplace.clarkcant.cc";
 
 /** Documented exit codes (docs/cli.md). */
 export const EXIT = {
