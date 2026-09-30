@@ -11,6 +11,7 @@ const signedIn = actor.type !== "anonymous";
 const links = [
   { href: "/packages", label: "Packages" },
   { href: "/collections", label: "Collections" },
+  { href: "/publish", label: "Publish" },
   { href: "/docs/api", label: "API" },
   ...(signedIn && actorHasScope(actor, "admin") ? [{ href: "/admin/pages", label: "Admin" }] : []),
   signedIn ? { href: "/account", label: "Account" } : { href: `/login?next=${encodeURIComponent(path)}`, label: "Sign in" },

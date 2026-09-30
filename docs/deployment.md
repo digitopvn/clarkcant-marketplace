@@ -68,6 +68,13 @@ Worker vars (`wrangler.jsonc`, `env.<env>.vars`): `PUBLIC_SITE_URL` (absolute or
 it is empty) and `ENVIRONMENT` (`staging` | `production`). `robots.txt` allows indexing only when
 `ENVIRONMENT=production`, so staging never competes with production in search results.
 
+Domains: the web Worker is served on Workers Custom Domains in the `clarkcant.cc` Cloudflare zone,
+`staging.marketplace.clarkcant.cc` (staging) and `marketplace.clarkcant.cc` (production), declared as `routes` with
+`custom_domain: true` in `apps/web/wrangler.jsonc`. Deploying creates the DNS record and certificate, so the deploy
+token needs Workers Routes and DNS edit on that zone. `PUBLIC_SITE_URL` in both `wrangler.jsonc` files and the
+`SITE_URL` environment variable must name the same origin. Changing the origin signs everyone out and invalidates
+passkeys, because Better Auth trusts only that origin and uses its hostname as the passkey RP ID.
+
 Worker secrets, set once per environment with
 `pnpm --filter @marketplace/web exec wrangler secret put <NAME> --env <env>`:
 

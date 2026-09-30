@@ -5,6 +5,7 @@ import { beforeAll, describe, expect, it } from "vitest";
 
 import {
   DEFAULT_PAGES_ACTOR,
+  DISCOVERY_KEYWORDS,
   LEGAL_PAGES,
   createPage,
   ensureDefaultPages,
@@ -39,9 +40,9 @@ describe("default pages", () => {
     );
   });
 
-  it("creates and publishes the landing, about and policy pages once, through the page commands", async () => {
-    const slugs = ["home", "about", "terms", "privacy", "cookies", "refunds", "gdpr", "security", "subprocessors"];
-    expect(LEGAL_PAGES.map((page) => page.slug)).toEqual(slugs.slice(2));
+  it("creates and publishes the landing, about, publisher guide and policy pages once, through the page commands", async () => {
+    const slugs = ["home", "about", "publish", "terms", "privacy", "cookies", "refunds", "gdpr", "security", "subprocessors"];
+    expect(LEGAL_PAGES.map((page) => page.slug)).toEqual(slugs.slice(3));
     expect(await ensureDefaultPages(deps, admin)).toEqual({ created: slugs, existing: [] });
     expect(await ensureDefaultPages(deps, admin)).toEqual({ created: [], existing: slugs });
 
@@ -58,6 +59,15 @@ describe("default pages", () => {
     const aboutRendered = await renderPageDocument(deps, about.document, { mode: "public", siteUrl: "https://marketplace.test", path: "/about" });
     expect(aboutRendered.markdown).toContain("# Discovery and curation for ClarkCant packages");
     expect(aboutRendered.html).toContain('href="/openapi.json"');
+
+    const guide = await getPublishedPage(deps, "publish");
+    const guideRendered = await renderPageDocument(deps, guide.document, { mode: "public", siteUrl: "https://marketplace.test", path: "/publish" });
+    expect(guideRendered.diagnostics).toEqual([]);
+    expect(guideRendered.markdown).toContain("# Publish a package");
+    // The guide names the discovery keywords and the submit route the indexer and API actually use.
+    for (const keyword of DISCOVERY_KEYWORDS) expect(guideRendered.markdown).toContain(`"${keyword}"`);
+    expect(guideRendered.markdown).toContain("/api/v1/publish/submit");
+    expect(guideRendered.html).toContain("clarkcant.json");
   });
 
   it("publishes every policy page as a legal draft that renders cleanly", async () => {
@@ -90,7 +100,7 @@ describe("default pages", () => {
 });
 
 describe("default pages seeded by the jobs Worker", () => {
-  const allSlugs = ["home", "about", "terms", "privacy", "cookies", "refunds", "gdpr", "security", "subprocessors"];
+  const allSlugs = ["home", "about", "publish", "terms", "privacy", "cookies", "refunds", "gdpr", "security", "subprocessors"];
 
   beforeAll(async () => {
     await deps.db.batch([deps.db.delete(pagePublications), deps.db.delete(pageRevisions), deps.db.delete(pages)]);
