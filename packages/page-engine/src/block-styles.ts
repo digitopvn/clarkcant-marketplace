@@ -85,6 +85,23 @@ h3.pe-heading { font-size: var(--step-1, 1.25rem); font-family: var(--font-sans)
 .pe-publisher .pe-eyebrow { margin-bottom: var(--space-2, .5rem); }
 .pe-publisher .pe-grid { margin-top: var(--space-5, 1.25rem); }
 .pe-diagnostic { border: 1px dashed var(--warning); color: var(--warning); background: color-mix(in srgb, var(--warning) 8%, transparent); border-radius: var(--radius-sm, 10px); padding: var(--space-3, .75rem) var(--space-4, 1rem); font-size: .875rem; margin: 0; }
+.pe-hero-with-accessory { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: var(--space-6, 2rem); }
+.pe-hero-accessory { width: clamp(9rem, 26vw, 22rem); }
+@media (max-width: 40rem) {
+  .pe-hero-with-accessory { grid-template-columns: minmax(0, 1fr); gap: var(--space-4, 1rem); }
+  .pe-hero-accessory { order: -1; width: 6.5rem; }
+  .pe-align-center .pe-hero-accessory { margin-inline: auto; }
+}
+.pe-region-aside .pe-faq { border: 1px solid var(--line); background: var(--bg-raised); border-radius: var(--radius-lg, 24px); padding: var(--space-5, 1.25rem); }
+.pe-region-aside .pe-heading { font-size: var(--step-1, 1.25rem); margin-bottom: var(--space-3, .75rem); }
+@media (min-width: 64rem) {
+  .pe-layout-marketplace-landing { display: grid; grid-template-columns: minmax(0, 1fr) minmax(16rem, 22rem); gap: var(--space-7, 3rem); align-items: start; }
+  .pe-layout-marketplace-landing > .pe-page-header, .pe-layout-marketplace-landing > .pe-region-header { grid-column: 1 / -1; margin-bottom: 0; }
+  .pe-layout-marketplace-landing > .pe-region + .pe-region { margin-top: 0; }
+  .pe-layout-marketplace-landing > .pe-region-main { grid-column: 1; }
+  .pe-layout-marketplace-landing > .pe-region-aside { grid-column: 2; position: sticky; top: var(--space-5, 1.25rem); }
+  .pe-layout-marketplace-landing > .pe-region-header + .pe-region-aside { grid-column: 1 / -1; position: static; }
+}
 @media (max-width: 640px) {
   .pe-page { padding-block: var(--space-6, 2rem); }
   .pe-prose table { display: block; max-width: 100%; overflow-x: auto; }

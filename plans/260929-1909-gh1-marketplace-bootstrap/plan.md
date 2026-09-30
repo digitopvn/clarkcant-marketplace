@@ -1,6 +1,6 @@
 # Bootstrap ClarkCant Marketplace platform (GitHub issue #1)
 
-Status: in progress · Mode: `--auto` · Source: https://github.com/digitopvn/clarkcant-marketplace/issues/1
+Status: completed with open items (2026-09-30; staging from `dev`, production from `main`, release `release-20260929-1841`; DoD #6 waits for a real ClarkCant widget on npm) · Mode: `--auto` · Source: https://github.com/digitopvn/clarkcant-marketplace/issues/1
 
 ## Brainstorm contract
 

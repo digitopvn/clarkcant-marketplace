@@ -17,8 +17,14 @@ const LAYOUTS: readonly LayoutDefinition[] = [
     id: "marketplace-landing",
     version: 1,
     label: "Marketplace landing",
-    description: "Home and campaign pages: a hero followed by package showcases and supporting content.",
-    regions: [HEADER, { id: "main", label: "Main", allowedBlocks: [...PACKAGE_BLOCKS, ...CONTENT_BLOCKS] }],
+    description: "Home and campaign pages: a hero, package showcases and supporting content, with answers in a sidebar.",
+    regions: [
+      HEADER,
+      { id: "main", label: "Main", allowedBlocks: [...PACKAGE_BLOCKS, ...CONTENT_BLOCKS.filter((type) => type !== "faq")] },
+      // The FAQ opens the sidebar; short supporting blocks may follow it there. Beside the main column on wide screens,
+      // after it on narrow ones.
+      { id: "aside", label: "Sidebar", allowedBlocks: ["faq", "rich-text", "cta"] },
+    ],
   },
   {
     id: "package-detail",

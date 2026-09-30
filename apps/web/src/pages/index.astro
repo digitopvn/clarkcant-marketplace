@@ -11,6 +11,7 @@ import {
 
 import { organizationJsonLd, webSiteJsonLd } from "@marketplace/seo";
 
+import { HERO_ORB_HTML } from "../components/orb/hero-orb";
 import PackageCard from "../components/package/PackageCard.astro";
 import RenderedPage from "../components/page-engine/RenderedPage.astro";
 import PackageSearchForm from "../components/PackageSearchForm.astro";
@@ -25,7 +26,12 @@ const { deps, vars } = createRequestContext();
 async function loadLanding() {
   try {
     const page = await getPublishedPage(deps, HOME_PAGE_SLUG);
-    const rendered = await renderPageDocument(deps, page.document, { mode: "public", siteUrl: vars.PUBLIC_SITE_URL, path: "/" });
+    const rendered = await renderPageDocument(deps, page.document, {
+      mode: "public",
+      siteUrl: vars.PUBLIC_SITE_URL,
+      path: "/",
+      heroAccessory: HERO_ORB_HTML,
+    });
     return { page, rendered };
   } catch (error) {
     if (isMarketplaceError(error) && error.code === "not_found") return null;
@@ -70,18 +76,21 @@ const hasPackages = featured.length > 0 || latest.length > 0;
       </Fragment>
     ) : (
       <Fragment>
-  <section class="container-page py-14">
-    <p class="font-mono text-xs uppercase tracking-widest text-faint">ClarkCant Marketplace</p>
-    <h1 class="mt-3 max-w-3xl font-display text-5xl leading-tight sm:text-6xl">
-      Widgets, tools, and themes for ClarkCant, <em>curated</em> from npm.
-    </h1>
-    <p class="mt-4 max-w-2xl text-muted">
-      Browse packages that declare a ClarkCant manifest. Install them from inside ClarkCant, which reviews every
-      permission a package asks for before it runs.
-    </p>
-    <div class="mt-8 max-w-xl">
-      <PackageSearchForm />
+  <section class="container-page grid items-center gap-4 py-14 sm:grid-cols-[minmax(0,1fr)_auto] sm:gap-8">
+    <div class="min-w-0">
+      <p class="font-mono text-xs uppercase tracking-widest text-faint">ClarkCant Marketplace</p>
+      <h1 class="mt-3 max-w-3xl font-display text-5xl leading-tight sm:text-6xl">
+        Widgets, tools, and themes for ClarkCant, <em>curated</em> from npm.
+      </h1>
+      <p class="mt-4 max-w-2xl text-muted">
+        Browse packages that declare a ClarkCant manifest. Install them from inside ClarkCant, which reviews every
+        permission a package asks for before it runs.
+      </p>
+      <div class="mt-8 max-w-xl">
+        <PackageSearchForm />
+      </div>
     </div>
+    <div class="-order-1 w-26 sm:order-none sm:w-[clamp(9rem,26vw,22rem)]" set:html={HERO_ORB_HTML} />
   </section>
 
   {
@@ -162,3 +171,9 @@ const hasPackages = featured.length > 0 || latest.length > 0;
     )
   }
 </BaseLayout>
+
+<script>
+  import { mountOrb } from "../components/orb/mount-orb";
+
+  for (const canvas of document.querySelectorAll<HTMLCanvasElement>("canvas[data-orb]")) mountOrb(canvas);
+</script>

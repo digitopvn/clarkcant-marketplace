@@ -127,6 +127,27 @@ describe("block rendering safety", () => {
     expect(page.markdown).not.toMatch(/\]\(\//);
   });
 
+  it("places the landing FAQ in the sidebar region", async () => {
+    const hero = { id: "h", type: "hero", version: 1, props: { title: "Home" } };
+    const grid = { id: "g", type: "package-grid", version: 1, props: { title: "Latest" } };
+    const faq = { id: "f", type: "faq", version: 1, props: { title: "How it works", items: [{ question: "Q?", answer: "A." }] } };
+    const document = documentWith([hero, grid, faq], "marketplace-landing");
+    expect(validatePageDocument(document).ok).toBe(true);
+    const page = await renderPage(document, renderOptions(port));
+    expect(page.html).toMatch(/data-region="main">.*Latest.*<\/div><div class="pe-region pe-region-aside" data-region="aside">.*How it works/s);
+    // The sidebar comes last, so a package showcase cannot follow the FAQ.
+    expect(validatePageDocument(documentWith([hero, faq, grid], "marketplace-landing")).ok).toBe(false);
+  });
+
+  it("shows host markup beside the hero only when the host supplies it", async () => {
+    const document = documentWith([{ id: "h", type: "hero", version: 1, props: { title: "Home" } }]);
+    const withMark = await renderPage(document, { ...renderOptions(port), heroAccessory: '<div class="orb"></div>' });
+    expect(withMark.html).toContain('<div class="pe-hero-accessory"><div class="orb"></div></div>');
+    expect(withMark.markdown).not.toContain("orb");
+    const plain = await renderPage(document, renderOptions(port));
+    expect(plain.html).not.toContain("pe-hero-accessory");
+  });
+
   it("adds a page heading when the page does not open with a hero", async () => {
     const page = await renderPage(documentWith([{ id: "r", type: "rich-text", version: 1, props: { markdown: "Body" } }]), renderOptions(port));
     expect(page.html).toContain('<h1 class="pe-display">About</h1>');

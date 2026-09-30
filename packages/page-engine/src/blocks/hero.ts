@@ -21,14 +21,16 @@ export const heroBlock = defineBlock({
   defaultProps: { eyebrow: "", title: "A clear headline", subtitle: "", align: "start", tone: "plain" },
   allowedChildren: ["cta", "code-install-snippet"],
   maxChildren: 3,
-  renderWeb: ({ props, children }) => {
+  renderWeb: ({ props, children, heroAccessory }) => {
     const eyebrow = props.eyebrow ? `<p class="pe-eyebrow">${escapeHtml(props.eyebrow)}</p>` : "";
     const subtitle = props.subtitle ? `<p class="pe-lede">${escapeHtml(props.subtitle)}</p>` : "";
     const rule = props.tone === "spectrum" ? '<div class="pe-spectrum" aria-hidden="true"></div>' : "";
     const actions = children.html ? `<div class="pe-hero-children">${children.html}</div>` : "";
+    const content = `${eyebrow}<h1 class="pe-display">${escapeHtml(props.title)}</h1>${subtitle}${rule}${actions}`;
+    if (!heroAccessory) return `<section class="pe-block pe-hero pe-align-${props.align}">${content}</section>`;
     return (
-      `<section class="pe-block pe-hero pe-align-${props.align}">${eyebrow}` +
-      `<h1 class="pe-display">${escapeHtml(props.title)}</h1>${subtitle}${rule}${actions}</section>`
+      `<section class="pe-block pe-hero pe-hero-with-accessory pe-align-${props.align}">` +
+      `<div class="pe-hero-content">${content}</div><div class="pe-hero-accessory">${heroAccessory}</div></section>`
     );
   },
   renderMarkdown: ({ props, children }) =>

@@ -217,3 +217,49 @@
 .home-landing .pe-page {
   padding-top: var(--space-5);
 }
+
+/*
+ * The hero Orb (the same WebGL Orb as clarkcant.cc). The canvas draws a transparent Orb that composites over any
+ * surface; the halo underneath keeps the glow readable on paper. Without WebGL the same idea is painted in CSS.
+ */
+.orb {
+  position: relative;
+  aspect-ratio: 1;
+  isolation: isolate;
+}
+
+.orb::before {
+  content: "";
+  position: absolute;
+  inset: 12%;
+  z-index: -1;
+  border-radius: 50%;
+  background: radial-gradient(closest-side, rgb(149 108 255 / 0.35), transparent 72%);
+  filter: blur(18px);
+  transform: scale(1.35);
+}
+
+.orb canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  touch-action: manipulation;
+}
+
+.orb--fallback canvas {
+  visibility: hidden;
+}
+
+.orb--fallback::after {
+  content: "";
+  position: absolute;
+  inset: 14%;
+  border-radius: 50%;
+  background:
+    radial-gradient(ellipse 34% 20% at 36% 30%, rgb(234 244 255 / 0.28), transparent 70%),
+    radial-gradient(ellipse 58% 9% at 50% 51%, rgb(255 255 255 / 0.95), transparent 70%),
+    radial-gradient(ellipse 80% 22% at 50% 51%, rgb(255 216 107 / 0.55), transparent 70%),
+    linear-gradient(90deg, transparent 12%, rgb(130 244 255 / 0.55) 26%, rgb(255 123 255 / 0.5) 66%, rgb(142 108 255 / 0.6) 82%, transparent 92%) center / 100% 22% no-repeat,
+    radial-gradient(circle at 50% 50%, #140f2a 0%, #07080f 70%);
+  box-shadow: 0 0 0 1px rgb(197 169 255 / 0.25) inset, 0 0 24px -4px rgb(149 108 255 / 0.55);
+}
