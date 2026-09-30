@@ -52,6 +52,7 @@ export function defineBlock<P extends Record<string, unknown>, D = undefined>(
         mode: options.mode,
         siteUrl: options.siteUrl,
         path: options.path,
+        heroAccessory: options.heroAccessory ?? "",
         children: { html: children.html, markdown: children.markdown, summaries: children.summaries },
         diagnose(message) {
           diagnostics.push(`${node.type} "${node.id}": ${message}`);

@@ -52,6 +52,11 @@ export interface RenderOptions {
   siteUrl: string;
   /** Site-relative path of the page, e.g. `/about` or `/`. */
   path: string;
+  /**
+   * Trusted host markup the hero shows beside its headline (the home page's Orb). It comes from the host's own code,
+   * never from a page document, and the Markdown twin ignores it.
+   */
+  heroAccessory?: string;
 }
 
 export interface BlockRenderContext<P, D> {
@@ -62,6 +67,8 @@ export interface BlockRenderContext<P, D> {
   mode: RenderMode;
   siteUrl: string;
   path: string;
+  /** See {@link RenderOptions.heroAccessory}. */
+  heroAccessory: string;
   /** Children already rendered, in order. Blocks without `allowedChildren` always get empty values. */
   children: { html: string; markdown: string; summaries: string[] };
   /**

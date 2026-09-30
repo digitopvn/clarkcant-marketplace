@@ -443,6 +443,8 @@ export interface RenderSettings {
   mode: RenderMode;
   siteUrl: string;
   path: string;
+  /** Trusted host markup beside the hero's headline (see the page engine's `RenderOptions.heroAccessory`). */
+  heroAccessory?: string;
 }
 
 /** Renders any valid document through the shared renderer with live marketplace data. */

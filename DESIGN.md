@@ -13,7 +13,9 @@ themselves live in [`apps/web/src/styles/tokens.css`](apps/web/src/styles/tokens
 - **Precise, not promotional.** The marketplace discovers and curates, npm distributes, ClarkCant installs and runs.
   Copy never claims a package is reviewed, verified or safe beyond the trust wording in [AGENTS.md](AGENTS.md).
 - **Recognisable when cropped.** The Orb mark sits beside the "ClarkCant" wordmark in the header and footer, as on
-  clarkcant.cc, the favicon and the default social card.
+  clarkcant.cc, the favicon and the default social card. The home hero shows the full WebGL Orb (the same renderer as
+  clarkcant.cc, `apps/web/src/components/orb/`) beside the headline, above it on phones; it follows reduced motion
+  and falls back to a static CSS Orb without WebGL.
 
 ## Typography
 
@@ -40,7 +42,8 @@ component. Muted and faint text meet 4.5:1 on `--bg` in both themes; keep it tha
 - One content column: `container-page` (max `--max` 76rem, gutter `--gutter`). Builder pages get the same column from
   the engine's `.pe-page`; never wrap engine HTML in a second container (it doubles the gutter and breaks the left edge
   shared with the header).
-- Breakpoints (Tailwind): mobile first, `sm` 640, `md` 768 (primary nav appears), `lg` 1024 (package detail sidebar).
+- Breakpoints (Tailwind): mobile first, `sm` 640, `md` 768 (primary nav appears), `lg` 1024 (package detail sidebar;
+  the landing layout's `aside` region, which holds the home FAQ, moves beside the main column and stays in view).
 - Every public page reflows at 320 px without horizontal scrolling. Grids and fieldsets that hold form controls need
   `min-w-0`; wide tables scroll inside their own wrapper.
 
