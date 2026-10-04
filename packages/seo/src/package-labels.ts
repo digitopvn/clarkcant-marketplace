@@ -42,10 +42,14 @@ export function isolationLane(isolation: string): IsolationLane {
 
 export const ISOLATION_OPTIONS = Object.entries(ISOLATION_LANES).map(([value, lane]) => ({ value, label: lane.label }));
 
-export const KIND_OPTIONS = ["widget", "ui", "tools", "skills", "prompts", "themes", "setup", "driver", "voice"].map((value) => ({
-  value,
-  label: value.charAt(0).toUpperCase() + value.slice(1),
-}));
+/** `ui` also finds schemaVersion 1 `widget` facets: the same thing under its older name. */
+export const KIND_OPTIONS = [
+  { value: "ui", label: "Widget" },
+  ...["tools", "skills", "prompts", "themes", "setup", "driver", "voice"].map((value) => ({
+    value,
+    label: value.charAt(0).toUpperCase() + value.slice(1),
+  })),
+];
 
 export const PLATFORM_OPTIONS = [
   { value: "web", label: "Web" },
@@ -61,7 +65,92 @@ export function platformLabel(platform: string): string {
   return PLATFORM_OPTIONS.find((option) => option.value === platform)?.label ?? platform;
 }
 
-type Permission = NonNullable<PackageDetail["latest"]>["permissions"][number];
+type VersionDetail = NonNullable<PackageDetail["latest"]>;
+type Permission = VersionDetail["permissions"][number];
+export type PackageServiceDetail = VersionDetail["services"][number];
+
+const EFFECTS: Record<string, { label: string; risk: RiskLevel }> = {
+  read: { label: "reads data", risk: "moderate" },
+  "local-write": { label: "changes things on this device", risk: "moderate" },
+  "external-write": { label: "changes things in another service", risk: "high" },
+  destructive: { label: "deletes or overwrites data", risk: "high" },
+  financial: { label: "can spend money", risk: "high" },
+  communication: { label: "sends messages for you", risk: "high" },
+  "media-capture": { label: "captures audio or video", risk: "high" },
+};
+
+/** What calling a capability does, as the package declares it. */
+export function effectLabel(effect: string): { label: string; risk: RiskLevel } {
+  return EFFECTS[effect] ?? { label: effect, risk: "high" };
+}
+
+/** Kinds the services section describes in context, with their purposes, so the flat list need not repeat them. */
+const SERVICE_PERMISSION_KINDS: ReadonlySet<string> = new Set([
+  "service-capability",
+  "egress",
+  "secret",
+  "connection-scope",
+  "connection-endpoint",
+]);
+
+/**
+ * Permissions to list on their own. When a version's services are described in full their rows are left out; when they
+ * cannot be (nothing structured to show), every row is listed so nothing is hidden.
+ */
+export function standalonePermissions(version: Pick<VersionDetail, "permissions" | "services">): Permission[] {
+  if (version.services.length === 0) return version.permissions;
+  return version.permissions.filter((permission) => !SERVICE_PERMISSION_KINDS.has(permission.kind));
+}
+
+function originOf(url: string): string {
+  try {
+    return new URL(url).origin;
+  } catch {
+    return url;
+  }
+}
+
+/** What one service asks for, in the words both the package page and its Markdown twin use. */
+export interface ServiceLines {
+  title: string;
+  provides: { title: string; detail: string; risk: RiskLevel; notes: string[] }[];
+  reaches: { origin: string; purpose: string; credential: string | null }[];
+  secrets: { name: string; purpose: string }[];
+  connection: { title: string; signIn: string; scopes: { scope: string; purpose: string }[]; endpoints: string[] } | null;
+}
+
+export function describeService(service: PackageServiceDetail): ServiceLines {
+  return {
+    title: `${service.facetId} (${service.protocol})`,
+    provides: service.capabilities.map((capability) => {
+      const effect = effectLabel(capability.effectCategory);
+      const notes = [
+        capability.job ? "Runs as a job you can follow and stop." : "",
+        capability.requiredScopes.length > 0 ? `Needs account scope ${capability.requiredScopes.join(", ")}.` : "",
+        capability.inputArtifactFields.length > 0
+          ? `Reads files you hand it (${capability.inputArtifactFields.join(", ")}), for that call only.`
+          : "",
+      ].filter((note) => note !== "");
+      return { title: `${capability.tool}: ${capability.summary}`, detail: `${capability.ref}, ${effect.label}`, risk: effect.risk, notes };
+    }),
+    reaches: (service.egress?.origins ?? []).map((origin) => ({
+      origin: origin.origin,
+      purpose: origin.purpose,
+      credential: origin.credential
+        ? `ClarkCant adds the ${origin.credential.secret} secret to the ${origin.credential.header} header; the service never sees it.`
+        : null,
+    })),
+    secrets: service.egress?.secrets ?? [],
+    connection: service.connection
+      ? {
+          title: `${service.connection.displayName} (${service.connection.provider})`,
+          signIn: `You sign in at ${originOf(service.connection.authorizationEndpoint)}. ClarkCant holds the account's tokens; the package never does.`,
+          scopes: service.connection.scopes,
+          endpoints: service.connection.endpoints,
+        }
+      : null,
+  };
+}
 
 export interface PermissionLine {
   risk: RiskLevel;
@@ -89,6 +178,40 @@ export function describePermission(permission: Permission): PermissionLine {
       return { risk: "high", title: "Lifecycle script", detail: `Runs "${permission.value}" during install or update` };
     case "capability":
       return { risk: "moderate", title: "Host capability", detail: permission.value };
+    case "service-capability": {
+      const effect = effectLabel(permission.access ?? "");
+      return { risk: effect.risk, title: "Service capability", detail: `${permission.value} (${effect.label})` };
+    }
+    case "egress":
+      return {
+        risk: "moderate",
+        title: "Service network access",
+        detail: permission.access
+          ? `Reaches ${permission.value} through ClarkCant, which adds the ${permission.access} secret`
+          : `Reaches ${permission.value} through ClarkCant`,
+      };
+    case "secret":
+      return { risk: "moderate", title: "Secret you provide", detail: `${permission.value}, kept by ClarkCant and never shown to the service` };
+    case "connection-scope":
+      return { risk: "moderate", title: "Account access", detail: `${permission.access ?? "Account"} scope ${permission.value}` };
+    case "connection-endpoint":
+      return {
+        risk: "moderate",
+        title: "Account API",
+        detail: `ClarkCant sends the ${permission.access ?? "account"} credential to ${permission.value}`,
+      };
+    case "browser-token":
+      return {
+        risk: "moderate",
+        title: "Scoped browser token",
+        detail: permission.access ? `${permission.value}: ${permission.access}` : permission.value,
+      };
+    case "resource-profile":
+      return {
+        risk: permission.value === "interactive-light" && permission.access !== "gpu" ? "low" : "moderate",
+        title: "Resource profile",
+        detail: permission.access === "gpu" ? `${permission.value} with a GPU` : permission.value,
+      };
   }
 }
 

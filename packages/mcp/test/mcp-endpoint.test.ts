@@ -149,6 +149,9 @@ describe("read tools", () => {
       package: "@acme/clock-widget",
       version: "1.0.0",
       permissions: expect.any(Array),
+      services: [],
+      browserTokens: [],
+      resources: null,
     });
     await expectToolFailure(client, "get_widget_permissions", { name: "@acme/missing" }, "not_found");
 

@@ -1,4 +1,9 @@
 {
   "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    // The contracts tests run in Node and read the vendored upstream fixtures; `node` also supplies the WHATWG `URL`
+    // global that the manifest mirror uses (as ClarkCant's own schema does), which every runtime here provides.
+    "types": ["node"]
+  },
   "include": ["src", "test"]
 }

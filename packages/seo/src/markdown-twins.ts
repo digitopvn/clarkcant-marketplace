@@ -1,7 +1,16 @@
 import type { Category, CollectionDetail, PackageDetail, PackageInstall, PackageSummary, PackageVersionSummary } from "@marketplace/contracts";
 import { escapeMarkdown, joinMarkdown, mdCode, mdHeading, mdLink } from "@marketplace/page-engine";
 
-import { checkLabel, checkSummary, describePermission, isolationLane, platformLabel, RISK_LABELS } from "./package-labels";
+import {
+  checkLabel,
+  checkSummary,
+  describePermission,
+  describeService,
+  isolationLane,
+  platformLabel,
+  RISK_LABELS,
+  standalonePermissions,
+} from "./package-labels";
 import { SITE_DESCRIPTION, SITE_NAME, canonicalUrl, categoryPath, collectionPath, markdownPathFor, packagePath } from "./site";
 
 /**
@@ -89,18 +98,56 @@ export function renderPackageMarkdown({ siteUrl, pkg, install, versions }: Packa
       ])
     : "";
 
+  const serviceSections = (latest?.services ?? []).map((service) => {
+    const lines = describeService(service);
+    const titled = (title: string, items: string[]) => (items.length > 0 ? `${title}\n${items.join("\n")}` : "");
+    return joinMarkdown([
+      mdHeading(3, `Service ${service.facetId} (${service.protocol})`),
+      lines.provides
+        .map((capability) => {
+          const notes = capability.notes.length > 0 ? ` ${escapeMarkdown(capability.notes.join(" "))}` : "";
+          return `- ${escapeMarkdown(capability.title)} (${escapeMarkdown(RISK_LABELS[capability.risk])}): \`${capability.detail}\`.${notes}`;
+        })
+        .join("\n"),
+      titled(
+        "Reaches, through ClarkCant:",
+        lines.reaches.map(
+          (reach) => `- \`${reach.origin}\`: ${escapeMarkdown(reach.purpose)}${reach.credential ? ` ${escapeMarkdown(reach.credential)}` : ""}`,
+        ),
+      ),
+      titled(
+        "Secrets you provide:",
+        lines.secrets.map((secret) => `- \`${secret.name}\`: ${escapeMarkdown(secret.purpose)}`),
+      ),
+      lines.connection
+        ? titled(
+            `Account connection, ${escapeMarkdown(lines.connection.title)}. ${escapeMarkdown(lines.connection.signIn)}`,
+            [
+              ...lines.connection.scopes.map((scope) => `- Scope \`${scope.scope}\`: ${escapeMarkdown(scope.purpose)}`),
+              `- Account API: ${lines.connection.endpoints.map((endpoint) => `\`${endpoint}\``).join(", ")}`,
+            ],
+          )
+        : "",
+    ]);
+  });
+  const otherPermissions = latest ? standalonePermissions(latest) : [];
+
   const permissionSection = latest
     ? joinMarkdown([
         mdHeading(2, "Requested permissions"),
         "Declared in the package manifest. ClarkCant asks for consent at install time; a listing grants nothing.",
-        latest.permissions.length > 0
-          ? latest.permissions
+        ...serviceSections,
+        serviceSections.length > 0 ? mdHeading(3, "Other permissions") : "",
+        otherPermissions.length > 0
+          ? otherPermissions
               .map((permission) => {
                 const line = describePermission(permission);
                 return `- ${escapeMarkdown(line.title)} (${escapeMarkdown(RISK_LABELS[line.risk])}): ${escapeMarkdown(line.detail)}`;
               })
               .join("\n")
-          : "No permissions requested.",
+          : serviceSections.length > 0
+            ? "Nothing beyond what its services declare above."
+            : "No permissions requested.",
       ])
     : "";
 

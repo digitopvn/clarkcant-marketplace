@@ -8,7 +8,7 @@ import {
   type SearchResult,
 } from "@marketplace/contracts";
 import { packageFacets, packageVersions, packages, packagesFts, publishers } from "@marketplace/db";
-import { and, asc, eq, exists, sql, type SQL } from "drizzle-orm";
+import { and, asc, eq, exists, inArray, sql, type SQL } from "drizzle-orm";
 
 import type { MarketplaceDeps } from "../deps";
 import {
@@ -92,12 +92,15 @@ export async function searchPackages(deps: MarketplaceDeps, input: SearchQueryIn
   return { query: query.q, items: page.items, nextCursor: page.nextCursor };
 }
 
+/** A schemaVersion 1 `widget` facet is what schemaVersion 2 calls `ui`; either filter finds both. */
+const WIDGET_KINDS = ["widget", "ui"];
+
 function latestVersionHasFacet(deps: MarketplaceDeps, kind: string | undefined, isolation: string | undefined): SQL {
   const conditions: SQL[] = [
     eq(packageVersions.packageId, packages.id),
     sql`${packageVersions.version} = ${packages.latestVersion}`,
   ];
-  if (kind) conditions.push(eq(packageFacets.kind, kind));
+  if (kind) conditions.push(WIDGET_KINDS.includes(kind) ? inArray(packageFacets.kind, WIDGET_KINDS) : eq(packageFacets.kind, kind));
   if (isolation) conditions.push(eq(packageFacets.isolation, isolation));
   return exists(
     deps.db

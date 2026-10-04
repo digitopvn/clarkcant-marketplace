@@ -144,10 +144,28 @@ their unshifted headings until re-indexed (local development data only).
 
 ## ClarkCant manifest
 
-`packages/contracts/src/manifest.ts` mirrors both manifest dialects ClarkCant accepts: the
-install manifest (`clarkcant/packages/contracts/src/install.ts`) and the widget package manifest
-(`clarkcant/packages/core/src/widget-package.ts`). `normalizeManifest` maps either into one shape
-for indexing. Keep the mirror in sync when ClarkCant changes its contracts.
+`packages/contracts/src/manifest.ts` mirrors the manifest ClarkCant reads (`parseManifest` in
+`clarkcant/packages/contracts/src/install.ts`), strictly and field for field:
+
+- **`schemaVersion` 2**, the canonical package manifest (`packageManifestSchema`), including service facets
+  (capabilities, egress, connection, input artifacts), browser tokens, resource requests and the cross-field rules
+  of `manifestProblems`.
+- **`schemaVersion` 1**, the widget-only format (`clarkcant/packages/core/src/widget-package.ts`). As in ClarkCant
+  it is upgraded and then held to the canonical rules, so a v1 file is listed exactly when ClarkCant would load it.
+  The stored manifest stays as shipped; its facets keep the kind `widget`, and the `ui` search filter matches both.
+- **No `schemaVersion`**, the earlier install-plan draft. ClarkCant no longer reads it; the marketplace still accepts
+  it so versions indexed under that rule keep the same meaning.
+
+`readClarkcantManifest` dispatches on `schemaVersion` and returns field-level issues, which become the
+`manifest_invalid` reason. `normalizeManifest` maps any dialect into one shape. The indexer writes flat
+`package_permissions` rows for search, MCP and the CLI (kinds such as `service-capability`, `egress`, `secret`,
+`connection-scope`, `connection-endpoint`, `browser-token` and `resource-profile`, documented on
+`PACKAGE_PERMISSION_KINDS`), and the package detail reads the structured `services`, `browserTokens` and
+`resources` from the immutable stored manifest. Everything there is a request that ClarkCant decides on at install
+time; the marketplace grants nothing.
+
+The mirror is pinned to an upstream commit by the cross-repository contract check; see
+[extending the indexer](extending-indexers.md#keeping-the-manifest-mirror-in-sync-with-clarkcant).
 
 ## Testing
 

@@ -21,6 +21,8 @@
     "db:migrate:staging": "pnpm --filter @marketplace/web exec wrangler d1 migrations apply DB --remote --config wrangler.jsonc --env staging",
     "db:migrate:production": "pnpm --filter @marketplace/web exec wrangler d1 migrations apply DB --remote --config wrangler.jsonc --env production",
     "migrations:check": "node scripts/check-migrations.mjs",
+    "contract:check": "vitest run --project contracts upstream-contract",
+    "contract:sync": "node scripts/sync-clarkcant-fixtures.mjs",
     "index:local": "tsx scripts/index-local.mjs",
     "verify": "pnpm lint && pnpm typecheck && pnpm test"
   },

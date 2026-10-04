@@ -31,7 +31,7 @@ dead-letter queue (`*-ingest-*-dlq`).
    configured registry (`untrusted_tarball_url` otherwise).
 2. **ingest**: download the tarball (size-capped), verify the registry's sha512 `integrity`
    (`integrity.ts`), untar in memory (`tar-reader.ts`), find and validate the ClarkCant manifest
-   (`manifest-validation.ts`, both manifest dialects), sanitize the README, store preview images in R2, and write the
+   (`manifest-validation.ts`; `schemaVersion` 2, 1 and the unversioned draft), sanitize the README, store preview images in R2, and write the
    immutable version row.
 3. **social card**: render the package card (`social-card.ts`, SVG).
 4. **finalize**: move the latest pointer, refresh the FTS index, close the submission, write the audit record. The
@@ -73,6 +73,32 @@ pnpm index:local @scope/widget@1.2.0 --tarball ./widget-1.2.0.tgz
 `scripts/index-local.mjs` runs the same pipeline against the **local** D1 and R2 (the state `pnpm dev` uses), with an
 in-process npm-compatible registry built from the tarball itself. It never contacts npm or remote resources. Create
 the tarball with `npm pack` in the package's directory.
+
+## Keeping the manifest mirror in sync with ClarkCant
+
+`packages/contracts/src/manifest.ts` copies ClarkCant's manifest contract rather than importing it, so the two can
+drift. `fixtures/upstream/clarkcant/` holds real manifests from ClarkCant: every
+`examples/reference-apps/*/clarkcant.json` and the manifest `clark widget init --template blank` writes.
+`UPSTREAM.json` records the repository, the full commit SHA, each file's source path and sha256, and the sha256 of
+the ClarkCant contract sources the mirror follows.
+
+- `pnpm contract:check` proves the vendored files are byte-for-byte what `UPSTREAM.json` records and that the mirror
+  accepts every one. It is part of `pnpm test`, so `pnpm verify` and CI run it.
+- `packages/marketplace/test/indexing-upstream-manifests.test.ts` packs each fixture with `npm pack` and indexes it
+  through the real pipeline against D1.
+
+To refresh, with a clean ClarkCant checkout at the commit to pin and its dependencies installed (`pnpm install`):
+
+```sh
+pnpm contract:sync --from ../clarkcant
+pnpm contract:check
+```
+
+The script reads the manifests from the checkout's `HEAD`, runs the checkout's own CLI for the blank template, and
+refuses when the CLI or contract packages have uncommitted changes. It warns when a contract source hash changed:
+read that diff in ClarkCant (`install.ts`, `primitives.ts`, `grants.ts`, the `service-*` modules,
+`resource-profiles.ts`, `widget-package.ts`), port it to `manifest.ts` with a test, and run `pnpm verify`. Never edit
+the vendored files by hand; the check fails on any change.
 
 ## Extending
 

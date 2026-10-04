@@ -160,6 +160,76 @@ describe("Markdown twins", () => {
     expect(markdown).toContain("https://www.npmjs.com/package/@acme/frame-widget");
   });
 
+  it("describes a service's capabilities, reach, secrets and account connection as requests", () => {
+    const base = detail().latest;
+    if (!base) throw new Error("fixture has a latest version");
+    const latest = {
+      ...base,
+      manifestSchemaVersion: 2 as const,
+      permissions: [
+        { kind: "service-capability" as const, value: "com.acme.tasks.update@1", access: "external-write" },
+        { kind: "egress" as const, value: "https://api.acme.example", access: "ACME_KEY" },
+        { kind: "secret" as const, value: "ACME_KEY", access: null },
+        { kind: "connection-scope" as const, value: "tasks.write", access: "acme.tasks" },
+        { kind: "connection-endpoint" as const, value: "https://tasks.acme.example", access: "acme.tasks" },
+        { kind: "resource-profile" as const, value: "background-compute", access: "gpu" },
+      ],
+      services: [
+        {
+          facetId: "com.acme.tasks.service",
+          entry: "service/server.mjs",
+          protocol: "mcp-stdio",
+          capabilities: [
+            {
+              tool: "update_task",
+              ref: "com.acme.tasks.update@1",
+              summary: "Update a task",
+              effectCategory: "external-write" as const,
+              job: true,
+              requiredScopes: ["tasks.write"],
+              inputArtifactFields: ["attachment"],
+            },
+          ],
+          egress: {
+            secrets: [{ name: "ACME_KEY", purpose: "Signs requests in." }],
+            origins: [
+              {
+                origin: "https://api.acme.example",
+                purpose: "Reads the weather.",
+                credential: { secret: "ACME_KEY", header: "authorization", scheme: "bearer" as const },
+              },
+            ],
+          },
+          connection: {
+            provider: "acme.tasks",
+            displayName: "Acme Tasks",
+            flow: "oauth-pkce" as const,
+            authorizationEndpoint: "https://tasks.acme.example/oauth/authorize?x=1",
+            tokenEndpoint: "https://tasks.acme.example/oauth/token",
+            revocationEndpoint: null,
+            scopes: [{ scope: "tasks.write", purpose: "Updates your tasks." }],
+            endpoints: ["https://tasks.acme.example"],
+            probeUrl: "https://tasks.acme.example/api/me",
+          },
+        },
+      ],
+    };
+    const markdown = renderPackageMarkdown({ siteUrl: SITE, pkg: detail({ latest }), install: INSTALL, versions: VERSIONS });
+    expect(markdown).toContain("Service com.acme.tasks.service (mcp-stdio)");
+    expect(markdown).toContain("(Higher risk): `com.acme.tasks.update@1, changes things in another service`.");
+    expect(markdown).toContain("Runs as a job you can follow and stop. Needs account scope tasks.write.");
+    expect(markdown).toContain("- `https://api.acme.example`: Reads the weather.");
+    expect(markdown).toContain("- `ACME_KEY`: Signs requests in.");
+    expect(markdown).toContain("You sign in at https://tasks.acme.example.");
+    expect(markdown).toContain("- Scope `tasks.write`: Updates your tasks.");
+    expect(markdown).toContain("- Account API: `https://tasks.acme.example`");
+    // Rows the services section already explains are not repeated; the rest still are.
+    expect(markdown).toContain("Other permissions");
+    expect(markdown).toContain("Resource profile (Needs your consent): background-compute with a GPU");
+    expect(markdown).not.toContain("Secret you provide");
+    expect(markdown).not.toContain("Service network access");
+  });
+
   it("renders a package without an indexed version", () => {
     const markdown = renderPackageMarkdown({ siteUrl: SITE, pkg: detail({ latest: null, latestVersion: null }), install: null, versions: [] });
     expect(markdown).toContain("This package has no indexed version yet.");

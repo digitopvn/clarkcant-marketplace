@@ -7,7 +7,25 @@ import { publishers } from "./publishers";
 
 export const CURATION_STATUSES = ["unreviewed", "listed", "featured", "hidden", "rejected"] as const;
 export const SUBMISSION_STATUSES = ["queued", "indexing", "indexed", "failed"] as const;
-export const PERMISSION_KINDS = ["capability", "network", "filesystem", "microphone", "camera", "lifecycle"] as const;
+/**
+ * Kinds of `package_permissions` rows; `PACKAGE_PERMISSION_KINDS` in `@marketplace/contracts` documents each one and
+ * must list the same values. A text column with no CHECK constraint, so adding a kind needs no migration.
+ */
+export const PERMISSION_KINDS = [
+  "capability",
+  "network",
+  "filesystem",
+  "microphone",
+  "camera",
+  "lifecycle",
+  "service-capability",
+  "egress",
+  "secret",
+  "connection-scope",
+  "connection-endpoint",
+  "browser-token",
+  "resource-profile",
+] as const;
 export const PREVIEW_KINDS = ["image", "video", "social_card"] as const;
 
 /**
