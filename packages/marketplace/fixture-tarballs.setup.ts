@@ -6,11 +6,14 @@ import { fileURLToPath } from "node:url";
 
 import type { TestProject } from "vitest/node";
 
+// The manifest module directly (it only imports zod): this file runs in plain Node, before Vite resolves anything.
+import { NPM_FACET_KEYWORDS, facetKindSchema } from "../contracts/src/manifest.ts";
+
 /**
  * Vitest global setup (runs in Node, before the workerd test pool starts): packs the example widget fixture, a few
- * deliberately broken variants, and one package per vendored ClarkCant manifest (`fixtures/upstream/clarkcant`) with
- * the real `npm pack`, and hands the tarball bytes to the tests through `provide`. The indexer tests then serve these
- * exact bytes from a local registry.
+ * deliberately broken or oversized variants, and one package per ClarkCant reference app and CLI template
+ * (`fixtures/upstream/clarkcant`) with the real `npm pack`, and hands the tarball bytes to the tests through `provide`.
+ * The indexer tests then serve these exact bytes from a local registry.
  */
 
 export const FIXTURE_TARBALLS_SETUP = fileURLToPath(import.meta.url);
@@ -19,7 +22,14 @@ const REPO_ROOT = path.resolve(path.dirname(FIXTURE_TARBALLS_SETUP), "../..");
 const FIXTURE_DIR = path.join(REPO_ROOT, "fixtures/widgets/example-frame-widget");
 const UPSTREAM_DIR = path.join(REPO_ROOT, "fixtures/upstream/clarkcant");
 
-export type FixtureVariant = "valid" | "nextVersion" | "missingManifest" | "invalidManifest" | "invalidServiceManifest";
+export type FixtureVariant =
+  | "valid"
+  | "nextVersion"
+  | "missingManifest"
+  | "invalidManifest"
+  | "invalidServiceManifest"
+  | "maxPermissionRows"
+  | "tooManyPermissionRows";
 
 /** One npm package built around a vendored ClarkCant manifest. */
 export interface UpstreamPackage {
@@ -41,21 +51,6 @@ declare module "vitest" {
     liveNpm: boolean;
   }
 }
-
-/**
- * The keyword ClarkCant's package convention adds for each facet kind. Discovery needs only `clarkcant`; the facet
- * keywords are what an author's `package.json` carries, so the fixtures carry them too.
- */
-const FACET_KEYWORDS: Record<string, string> = {
-  ui: "clarkcant-widget",
-  tools: "clarkcant-service",
-  skills: "clarkcant-skill",
-  prompts: "clarkcant-prompt",
-  themes: "clarkcant-theme",
-  setup: "clarkcant-setup",
-  driver: "clarkcant-driver",
-  voice: "clarkcant-voice",
-};
 
 function npmPack(packageDir: string, destination: string): Buffer {
   // `shell` is required on Windows, where npm is a .cmd shim; the arguments are fixed strings.
@@ -89,7 +84,8 @@ interface UpstreamFile {
 
 /**
  * Writes an npm package around one upstream manifest, the way an author would publish it: the manifest at the root, the
- * same version in `package.json`, `clarkcant` plus one keyword per facet kind, and an explicit `files` list.
+ * same version in `package.json`, `clarkcant` plus one keyword per facet kind, and an explicit `files` list. An edited
+ * manifest is written compactly, so a deliberately large one stays under the marketplace's manifest size limit.
  */
 function upstreamPackageDir(
   root: string,
@@ -100,8 +96,11 @@ function upstreamPackageDir(
   name: string;
   version: string;
 } {
-  const manifestText = readFileSync(path.join(UPSTREAM_DIR, ...fixture.split("/"), "clarkcant.json"), "utf8");
-  const manifest = JSON.parse(manifestText) as {
+  const upstreamText = readFileSync(path.join(UPSTREAM_DIR, ...fixture.split("/"), "clarkcant.json"), "utf8");
+  const edited = JSON.parse(upstreamText) as Record<string, unknown>;
+  edit?.manifest(edited);
+  const manifestText = edit ? JSON.stringify(edited) : upstreamText;
+  const manifest = edited as unknown as {
     version: string;
     description: string;
     facets: { kind: string }[];
@@ -110,7 +109,7 @@ function upstreamPackageDir(
   const name = `@clarkcant-fixtures/${fixture.replace("/", "-")}`;
   const dir = path.join(root, "upstream", edit?.dirName ?? fixture.replace("/", "-"));
   mkdirSync(dir, { recursive: true });
-  const kinds = [...new Set(manifest.facets.map((facet) => FACET_KEYWORDS[facet.kind]).filter((keyword) => keyword !== undefined))];
+  const kinds = [...new Set(manifest.facets.map((facet) => NPM_FACET_KEYWORDS[facetKindSchema.parse(facet.kind)]))];
   writeFileSync(
     path.join(dir, "package.json"),
     `${JSON.stringify(
@@ -127,8 +126,41 @@ function upstreamPackageDir(
     )}\n`,
   );
   writeFileSync(path.join(dir, "clarkcant.json"), manifestText);
-  if (edit) editJson(path.join(dir, "clarkcant.json"), edit.manifest);
   return { dir, name, version: manifest.version };
+}
+
+/**
+ * Adds `count` service capabilities, 64 to a tools facet (ClarkCant's per-facet limit), each with its own ref. Every
+ * capability is one permission row, so the blank template plus this has exactly `count` rows.
+ */
+function addServiceCapabilities(manifest: Record<string, unknown>, count: number): void {
+  const id = String(manifest.id);
+  const facets = manifest.facets as unknown[];
+  for (let facet = 0; facet * 64 < count; facet += 1) {
+    facets.push({
+      kind: "tools",
+      id: `${id}.service-${String(facet)}`,
+      entry: `services/s${String(facet)}/server.mjs`,
+      isolation: "service",
+      protocol: "mcp-stdio",
+      capabilities: Array.from({ length: Math.min(64, count - facet * 64) }, (_, index) => ({
+        tool: `t${String(index)}`,
+        ref: `${id}.s${String(facet)}.t${String(index)}@1`,
+        summary: `Tool ${String(index)}`,
+        effectCategory: "read",
+      })),
+    });
+  }
+}
+
+/** A blank-template package whose manifest yields `rows` permission rows, published under `name`. */
+function permissionRowsPackage(root: string, name: string, rows: number): string {
+  const built = upstreamPackageDir(root, "templates/blank", {
+    dirName: name.replace(/^@[^/]+\//, ""),
+    manifest: (manifest) => addServiceCapabilities(manifest, rows),
+  });
+  editJson(path.join(built.dir, "package.json"), (json) => (json.name = name));
+  return built.dir;
 }
 
 export default function setup(project: TestProject): () => void {
@@ -169,6 +201,9 @@ export default function setup(project: TestProject): () => void {
       });
     }),
     invalidServiceManifest: invalidService.dir,
+    // The marketplace's permission-row limit (MAX_PERMISSION_ROWS in manifest-validation.ts) and one past it.
+    maxPermissionRows: permissionRowsPackage(root, "@clarkcant/example-max-permissions", 2048),
+    tooManyPermissionRows: permissionRowsPackage(root, "@clarkcant/example-too-many-permissions", 2049),
   };
 
   const tarballs = {} as Record<FixtureVariant, string>;
@@ -177,7 +212,10 @@ export default function setup(project: TestProject): () => void {
   }
 
   const upstream = JSON.parse(readFileSync(path.join(UPSTREAM_DIR, "UPSTREAM.json"), "utf8")) as { files: UpstreamFile[] };
-  const upstreamPackages: UpstreamPackage[] = upstream.files.map((file) => {
+  // The manifests an author would publish: ClarkCant's reference apps and the CLI's blank template. Its own e2e and
+  // theme fixtures are covered by the contract check instead.
+  const published = upstream.files.filter((file) => /^(reference-apps|templates)\//.test(file.path));
+  const upstreamPackages: UpstreamPackage[] = published.map((file) => {
     const fixture = file.path.replace(/\/clarkcant\.json$/, "");
     const built = upstreamPackageDir(root, fixture);
     return { fixture, name: built.name, version: built.version, tarball: npmPack(built.dir, out).toString("base64") };

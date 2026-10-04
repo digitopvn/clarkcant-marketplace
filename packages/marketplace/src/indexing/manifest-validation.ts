@@ -11,6 +11,14 @@ import { IndexingRejectedError } from "./indexing-errors";
 const MAX_REPORTED_ISSUES = 8;
 
 /**
+ * The most permission rows one version may store. ClarkCant has no such limit, but its own per-list limits multiply out
+ * to several thousand rows, and the marketplace writes a version in one D1 batch. 2048 rows is far beyond any real
+ * package and keeps that batch to about a hundred statements; a manifest that needs more is refused by name instead of
+ * failing the batch on every retry.
+ */
+export const MAX_PERMISSION_ROWS = 2048;
+
+/**
  * Parses and validates `clarkcant.json` against the mirrored ClarkCant contract, including the cross-field rules
  * ClarkCant applies before it reads a manifest. A manifest only describes what a package *requests*; accepting it grants
  * nothing. The manifest's `version` must equal the npm version, so a listing can never describe a different artifact
@@ -19,7 +27,7 @@ const MAX_REPORTED_ISSUES = 8;
 export function validateManifest(
   manifestText: string | null,
   npmVersion: string,
-): { raw: ClarkcantManifest; normalized: NormalizedManifest } {
+): { raw: ClarkcantManifest; normalized: NormalizedManifest; permissions: PermissionRow[] } {
   if (manifestText === null) {
     throw new IndexingRejectedError("manifest_missing", "the package has no clarkcant.json at its root");
   }
@@ -46,7 +54,15 @@ export function validateManifest(
       `clarkcant.json declares version ${result.normalized.version} but npm published ${npmVersion}`,
     );
   }
-  return { raw: result.manifest, normalized: result.normalized };
+  const permissions = permissionRows(result.normalized);
+  if (permissions.length > MAX_PERMISSION_ROWS) {
+    throw new IndexingRejectedError(
+      "manifest_too_large",
+      `clarkcant.json declares ${String(permissions.length)} distinct permissions, capabilities, secrets and connection details; the marketplace lists at most ${String(MAX_PERMISSION_ROWS)}`,
+      { permissionRows: permissions.length, limit: MAX_PERMISSION_ROWS },
+    );
+  }
+  return { raw: result.manifest, normalized: result.normalized, permissions };
 }
 
 export type PermissionKind = (typeof PERMISSION_KINDS)[number];

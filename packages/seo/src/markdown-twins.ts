@@ -1,5 +1,5 @@
 import type { Category, CollectionDetail, PackageDetail, PackageInstall, PackageSummary, PackageVersionSummary } from "@marketplace/contracts";
-import { escapeMarkdown, joinMarkdown, mdCode, mdHeading, mdLink } from "@marketplace/page-engine";
+import { escapeMarkdown, joinMarkdown, mdCode, mdHeading, mdInlineCode, mdLink } from "@marketplace/page-engine";
 
 import {
   checkLabel,
@@ -32,7 +32,7 @@ function packageLine(siteUrl: string, pkg: PackageSummary): string {
   const url = canonicalUrl(siteUrl, markdownPathFor(packagePath(pkg.name)));
   const version = pkg.latestVersion ? ` (v${escapeMarkdown(pkg.latestVersion)})` : "";
   const description = pkg.description ? `: ${escapeMarkdown(pkg.description.replace(/\s+/g, " ").trim())}` : "";
-  return `- ${mdLink(pkg.displayName, url)} \`${pkg.name}\`${version}${description}`;
+  return `- ${mdLink(pkg.displayName, url)} ${mdInlineCode(pkg.name)}${version}${description}`;
 }
 
 export function renderPackageListMarkdown(siteUrl: string, packages: readonly PackageSummary[], empty: string): string {
@@ -52,8 +52,8 @@ export function renderPackageMarkdown({ siteUrl, pkg, install, versions }: Packa
   const npmUrl = `https://www.npmjs.com/package/${pkg.name}`;
 
   const facts = [
-    bullet("Package", `\`${pkg.name}\``),
-    pkg.latestVersion ? bullet("Latest version", `\`${pkg.latestVersion}\``) : bullet("Latest version", "none indexed yet"),
+    bullet("Package", mdInlineCode(pkg.name)),
+    pkg.latestVersion ? bullet("Latest version", mdInlineCode(pkg.latestVersion)) : bullet("Latest version", "none indexed yet"),
     bullet(
       "Publisher",
       pkg.publisher
@@ -74,9 +74,9 @@ export function renderPackageMarkdown({ siteUrl, pkg, install, versions }: Packa
         "ClarkCant installs packages from npm and re-verifies the integrity digest before asking for consent. The marketplace never serves the package itself.",
         mdCode(JSON.stringify({ package: install.package, version: install.version, source: install.source }, null, 2), "json"),
         [
-          bullet("Integrity", `\`${install.integrity}\``),
-          bullet("Open in ClarkCant (proposed deep link)", `\`${install.openInClarkCant}\``),
-          bullet("Manual fetch", `\`${install.cliCommand}\``),
+          bullet("Integrity", mdInlineCode(install.integrity)),
+          bullet("Open in ClarkCant (proposed deep link)", mdInlineCode(install.openInClarkCant)),
+          bullet("Manual fetch", mdInlineCode(install.cliCommand)),
         ].join("\n"),
       ])
     : "";
@@ -88,7 +88,7 @@ export function renderPackageMarkdown({ siteUrl, pkg, install, versions }: Packa
           ? latest.facets
               .map((facet) => {
                 const lane = isolationLane(facet.isolation);
-                return `- ${escapeMarkdown(facet.kind)} (${escapeMarkdown(lane.label)}, ${escapeMarkdown(RISK_LABELS[lane.risk])}): ${escapeMarkdown(lane.summary)} Entry \`${facet.widgetId ?? facet.entry}\`.`;
+                return `- ${escapeMarkdown(facet.kind)} (${escapeMarkdown(lane.label)}, ${escapeMarkdown(RISK_LABELS[lane.risk])}): ${escapeMarkdown(lane.summary)} Entry ${mdInlineCode(facet.widgetId ?? facet.entry)}.`;
               })
               .join("\n")
           : "No facets declared.",
@@ -106,25 +106,25 @@ export function renderPackageMarkdown({ siteUrl, pkg, install, versions }: Packa
       lines.provides
         .map((capability) => {
           const notes = capability.notes.length > 0 ? ` ${escapeMarkdown(capability.notes.join(" "))}` : "";
-          return `- ${escapeMarkdown(capability.title)} (${escapeMarkdown(RISK_LABELS[capability.risk])}): \`${capability.detail}\`.${notes}`;
+          return `- ${escapeMarkdown(capability.title)} (${escapeMarkdown(RISK_LABELS[capability.risk])}): ${mdInlineCode(capability.detail)}.${notes}`;
         })
         .join("\n"),
       titled(
         "Reaches, through ClarkCant:",
         lines.reaches.map(
-          (reach) => `- \`${reach.origin}\`: ${escapeMarkdown(reach.purpose)}${reach.credential ? ` ${escapeMarkdown(reach.credential)}` : ""}`,
+          (reach) => `- ${mdInlineCode(reach.origin)}: ${escapeMarkdown(reach.purpose)}${reach.credential ? ` ${escapeMarkdown(reach.credential)}` : ""}`,
         ),
       ),
       titled(
         "Secrets you provide:",
-        lines.secrets.map((secret) => `- \`${secret.name}\`: ${escapeMarkdown(secret.purpose)}`),
+        lines.secrets.map((secret) => `- ${mdInlineCode(secret.name)}: ${escapeMarkdown(secret.purpose)}`),
       ),
       lines.connection
         ? titled(
             `Account connection, ${escapeMarkdown(lines.connection.title)}. ${escapeMarkdown(lines.connection.signIn)}`,
             [
-              ...lines.connection.scopes.map((scope) => `- Scope \`${scope.scope}\`: ${escapeMarkdown(scope.purpose)}`),
-              `- Account API: ${lines.connection.endpoints.map((endpoint) => `\`${endpoint}\``).join(", ")}`,
+              ...lines.connection.scopes.map((scope) => `- Scope ${mdInlineCode(scope.scope)}: ${escapeMarkdown(scope.purpose)}`),
+              `- Account API: ${lines.connection.endpoints.map((endpoint) => mdInlineCode(endpoint)).join(", ")}`,
             ],
           )
         : "",
@@ -161,7 +161,7 @@ export function renderPackageMarkdown({ siteUrl, pkg, install, versions }: Packa
 
   const versionSection =
     versions.length > 0
-      ? joinMarkdown([mdHeading(2, "Versions"), versions.map((version) => `- \`${version.version}\` published ${version.publishedAt.slice(0, 10)}`).join("\n")])
+      ? joinMarkdown([mdHeading(2, "Versions"), versions.map((version) => `- ${mdInlineCode(version.version)} published ${version.publishedAt.slice(0, 10)}`).join("\n")])
       : "";
 
   return `${joinMarkdown([

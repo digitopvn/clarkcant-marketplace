@@ -1,0 +1,80 @@
+{
+  "schemaVersion": 2,
+  "id": "com.example.notes",
+  "version": "1.0.0",
+  "displayName": "Notes",
+  "description": "A notes widget whose notes are kept by the package's own service.",
+  "hostApi": {
+    "min": 1,
+    "max": 1
+  },
+  "facets": [
+    {
+      "kind": "ui",
+      "id": "com.example.notes.board@1",
+      "entry": "widgets/board/index.html",
+      "definition": "widgets/board/widget.json",
+      "isolation": "isolated-ui"
+    },
+    {
+      "kind": "tools",
+      "id": "com.example.notes.service",
+      "entry": "service/server.mjs",
+      "isolation": "service",
+      "protocol": "mcp-stdio",
+      "capabilities": [
+        {
+          "tool": "add_note",
+          "ref": "com.example.notes.add@1",
+          "summary": "Add a note to the notes the service keeps",
+          "effectCategory": "local-write"
+        },
+        {
+          "tool": "add_note_slowly",
+          "ref": "com.example.notes.add-slowly@1",
+          "summary": "Add a note after a wait, unless stopped first",
+          "effectCategory": "local-write"
+        },
+        {
+          "tool": "export_notes",
+          "ref": "com.example.notes.export@1",
+          "summary": "Export the notes to a text file, step by step, as a job the widget can follow and stop",
+          "effectCategory": "read",
+          "execution": { "kind": "job", "version": 1 }
+        },
+        {
+          "tool": "list_notes",
+          "ref": "com.example.notes.list@1",
+          "summary": "List the notes the service keeps",
+          "effectCategory": "read"
+        },
+        {
+          "tool": "move_board_card",
+          "ref": "com.example.notes.board-move@1",
+          "summary": "Move a card in the fixture board",
+          "effectCategory": "local-write"
+        }
+      ]
+    }
+  ],
+  "requestedCapabilities": [],
+  "permissions": {
+    "networkOrigins": [],
+    "filesystem": [],
+    "microphone": false,
+    "camera": false,
+    "lifecycleScripts": []
+  },
+  "platforms": [
+    "darwin-arm64",
+    "linux-x64",
+    "win32-x64",
+    "web"
+  ],
+  "publisher": {
+    "id": "example",
+    "sourceUrl": "https://example.com",
+    "license": "MIT"
+  },
+  "dependencies": []
+}

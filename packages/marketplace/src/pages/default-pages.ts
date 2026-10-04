@@ -1,5 +1,6 @@
 import {
   MarketplaceError,
+  NPM_FACET_KEYWORDS,
   requireScope,
   type Actor,
   type AuditActor,
@@ -145,6 +146,11 @@ const ABOUT: DefaultPage = {
   },
 };
 
+/** "`clarkcant-widget` (ui), `clarkcant-service` (tools), ...": the facet keywords, from the one map tests also use. */
+const FACET_KEYWORD_LIST = Object.entries(NPM_FACET_KEYWORDS)
+  .map(([kind, keyword]) => `\`${keyword}\` (${kind})`)
+  .join(", ");
+
 /** The publisher guide. Every step mirrors what the indexer and the publish API enforce today. */
 const PUBLISH: DefaultPage = {
   slug: "publish",
@@ -203,10 +209,10 @@ const PUBLISH: DefaultPage = {
             "}",
             "```",
             "",
-            "- Each facet's `isolation` must match its kind: `ui` is `isolated-ui`, `tools` is `service`, `skills`, `prompts`, `themes` and `setup` are `declarative`, and `driver` and `voice` are `trusted-native`.",
+            "- Each facet's `isolation` must match its kind: `ui` is `isolated-ui`, `tools` is `service`, `skills`, `prompts`, `themes` and `setup` are `declarative`, and `driver` and `voice` are `service` or `trusted-native`.",
             "- A `tools` facet lists the `capabilities` it provides, each with the `tool` it answers to, a `ref` under the package `id`, a `summary` and an `effectCategory`. It declares the origins it reaches and the secrets it needs under `egress`, and an account it signs in to under `connection`. All of it is shown on the package page.",
             "- Unknown fields are rejected, and so is a manifest whose parts do not agree: an origin that is not HTTPS (loopback aside), a credential naming an undeclared secret, a capability needing a scope its connection does not request, a ref outside the package's namespace. The rejection names the field.",
-            "- `schemaVersion` 1 widget manifests (facet kind `widget`) are still accepted and listed, held to the same rules ClarkCant applies when it reads them; new packages should use 2.",
+            "- `schemaVersion` 1 widget manifests (facet kind `widget`) are still accepted and listed, held to the same rules ClarkCant's manifest reader applies to them; new packages should use 2. A manifest without `schemaVersion` is rejected, because ClarkCant no longer reads it.",
             "",
             "## 2. Describe it for people",
             "",
@@ -215,12 +221,23 @@ const PUBLISH: DefaultPage = {
             "",
             "## 3. Set up `package.json` and publish to npm",
             "",
-            "- `name` can be any valid npm name.",
-            "- `version` must equal the `version` in `clarkcant.json`; a mismatch is rejected.",
-            '- `keywords` must include `"clarkcant"`, which is what the marketplace searches npm for (it also finds packages tagged `"clarkcant-widget"`). ClarkCant\'s packaging convention adds one keyword per facet kind too: `clarkcant-widget` (ui), `clarkcant-service` (tools), `clarkcant-skill`, `clarkcant-prompt`, `clarkcant-theme`, `clarkcant-setup`, `clarkcant-driver` and `clarkcant-voice`.',
-            "- List what ships in `files`, keep `dependencies` empty, and add no install-time lifecycle scripts (`preinstall`, `install`, `postinstall`, `prepare`); the marketplace flags any it finds.",
+            "What the marketplace checks when it indexes a version:",
             "",
-            "Then run `npm publish`. ClarkCant is adopting this convention in `clark widget pack`, which checks the rules and writes the tarball for you to publish with `npm publish dist/<file>.tgz`. The packed tarball must stay under 25 MiB.",
+            "- `version` must equal the `version` in `clarkcant.json`; a mismatch is rejected.",
+            '- `keywords` must include `"clarkcant"` (or `"clarkcant-widget"`): those are what the marketplace searches npm for.',
+            "- npm install scripts (`preinstall`, `install`, `postinstall`, `prepare`) are recorded and shown as a warning on the package page.",
+            "",
+            "ClarkCant's packaging convention goes further. `clark widget pack` will check it and write the tarball for you to publish with `npm publish dist/<file>.tgz` once [digitopvn/clarkcant#465](https://github.com/digitopvn/clarkcant/pull/465) lands; until then, follow it by hand and run `npm publish`:",
+            "",
+            "- `name` is any valid npm package name, and `version` equals the `clarkcant.json` version.",
+            "- `license` equals `publisher.license` in `clarkcant.json`.",
+            `- \`keywords\` include \`clarkcant\` plus one keyword per facet kind the package carries: ${FACET_KEYWORD_LIST}.`,
+            "- An explicit, non-empty `files` list says what ships.",
+            "- No `dependencies`, `optionalDependencies`, `bundleDependencies` or `bundledDependencies`.",
+            "- No install-time scripts (`preinstall`, `install`, `postinstall`) and no packing scripts (`prepack`, `prepare`, `postpack`).",
+            "- Files that look like credentials or a local environment are refused even when `files` names them: `.npmrc`, `.netrc`, `.env*`, `.dev.vars`, `.git-credentials`, SSH private keys, `*.pem`, `*.key`, `*.p12`, `*.pfx`, `*.keystore`, and anything under `.git`.",
+            "",
+            "The packed tarball must stay under 25 MiB.",
             "",
             "## 4. Get indexed",
             "",

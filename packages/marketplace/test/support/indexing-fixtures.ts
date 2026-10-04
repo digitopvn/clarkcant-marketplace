@@ -12,7 +12,14 @@ import {
 } from "../../src";
 import { resetDatabase } from "./seed";
 
-export type FixtureVariant = "valid" | "nextVersion" | "missingManifest" | "invalidManifest" | "invalidServiceManifest";
+export type FixtureVariant =
+  | "valid"
+  | "nextVersion"
+  | "missingManifest"
+  | "invalidManifest"
+  | "invalidServiceManifest"
+  | "maxPermissionRows"
+  | "tooManyPermissionRows";
 
 /** One npm package built around a vendored ClarkCant manifest (see `fixture-tarballs.setup.ts`). */
 export interface UpstreamPackage {

@@ -22,7 +22,8 @@ fixtures fails CI when the mirror drifts from ClarkCant's contract.
 - Rewriting already-published builder pages on live environments (default pages never overwrite).
 
 ### Acceptance criteria (issue #5)
-1. v2 accepted; schemaVersion 1 widget manifests and the schemaVersion-less draft keep parsing.
+1. v2 accepted; schemaVersion 1 widget manifests keep parsing. The schemaVersion-less draft is refused for new
+   versions (ClarkCant no longer reads it; decided in review) and stays readable for stored rows.
 2. Service capabilities, resources, egress/secrets, connection scopes/endpoints persisted and displayed (page, twin, API).
 3. Five reference manifests and a fresh `clark widget init --template blank` manifest validate and index through the
    real pipeline from `npm pack` tarballs against real D1.
@@ -45,7 +46,10 @@ fixtures fails CI when the mirror drifts from ClarkCant's contract.
    runbook.
 
 ## Progress
-Steps 1-6 done. Upstream pinned at digitopvn/clarkcant@4368e5ed3631645424cc74d0d76aceaf00dca520. No migration needed (`pnpm migrations:check` clean). Report: `plans/reports/fullstack-261005-manifest-v2.md`.
+Steps 1-6 done. Review follow-up (`plans/reports/code-review-pr6.md`) done: two-way drift check (hostile-variant
+verdicts from ClarkCant's `parseManifest`, `--check`/`--accept`, weekly workflow), chunked permission inserts with a
+2048-row limit, inline-code escaping in the Markdown twin, the draft refused at ingest, tolerant stored-manifest
+reads, guide and docs corrections. Upstream pinned at digitopvn/clarkcant@4368e5ed3631645424cc74d0d76aceaf00dca520. No migration needed (`pnpm migrations:check` clean). Report: `plans/reports/fullstack-261005-manifest-v2.md`.
 
 ## Validation
 Focused vitest projects, then `pnpm verify`, `pnpm migrations:check`, `pnpm build`, relevant e2e.

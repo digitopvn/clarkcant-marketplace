@@ -287,32 +287,26 @@ describe("schemaVersion 1 widget manifests", () => {
 });
 
 describe("the schemaVersion-less install draft", () => {
-  it("is still read and keeps declared filesystem access", () => {
+  it("is refused for new versions, because ClarkCant no longer reads it", () => {
     const result = readClarkcantManifest(installManifest);
-    if (!result.ok) throw new Error(JSON.stringify(result.issues));
+    expect(result.ok).toBe(false);
+    expect(issuesOf(result)).toEqual([
+      'schemaVersion: is missing; ClarkCant reads manifests that declare schemaVersion 2 (or 1, the widget-only format), so add "schemaVersion": 2',
+    ]);
+    const withoutVersion = copy(mediaRender);
+    delete withoutVersion.schemaVersion;
+    expect(issuesOf(readClarkcantManifest(withoutVersion))[0]).toMatch(/^schemaVersion: is missing/);
+  });
+
+  it("stays readable when an older version was stored under it, keeping declared filesystem access", () => {
     expect(legacyInstallManifestSchema.safeParse(installManifest).success).toBe(true);
-    const normalized = result.normalized;
+    const normalized = normalizeStoredManifest(installManifest);
     expect(normalized).toMatchObject({ dialect: "install", schemaVersion: null, displayName: null, services: [] });
-    expect(normalized.facets.map((facet) => [facet.kind, facet.isolation, facet.renderer])).toEqual([
+    expect(normalized?.facets.map((facet) => [facet.kind, facet.isolation, facet.renderer])).toEqual([
       ["ui", "isolated-ui", "isolated-app"],
       ["tools", "service", null],
     ]);
-    expect(normalized.permissions.filesystem).toEqual([{ path: "cache", access: "write" }]);
-  });
-
-  it("explains that schemaVersion is missing when the draft does not match either", () => {
-    const withoutVersion = copy(mediaRender);
-    delete withoutVersion.schemaVersion;
-    const issues = issuesOf(readClarkcantManifest(withoutVersion));
-    expect(issues[0]).toMatch(/^schemaVersion: is missing; ClarkCant manifests declare schemaVersion 2/);
-  });
-
-  it("still refuses its own bad values", () => {
-    const base = installManifest;
-    expect(readClarkcantManifest({ ...base, extra: true }).ok).toBe(false);
-    expect(readClarkcantManifest({ ...base, hostApi: { min: 3, max: 1 } }).ok).toBe(false);
-    expect(readClarkcantManifest({ ...base, requestedCapabilities: ["Data"] }).ok).toBe(false);
-    expect(readClarkcantManifest({ ...base, facets: [{ kind: "ui", entry: "x", isolation: "root" }] }).ok).toBe(false);
+    expect(normalized?.permissions.filesystem).toEqual([{ path: "cache", access: "write" }]);
   });
 });
 

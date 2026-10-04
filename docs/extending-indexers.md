@@ -31,7 +31,7 @@ dead-letter queue (`*-ingest-*-dlq`).
    configured registry (`untrusted_tarball_url` otherwise).
 2. **ingest**: download the tarball (size-capped), verify the registry's sha512 `integrity`
    (`integrity.ts`), untar in memory (`tar-reader.ts`), find and validate the ClarkCant manifest
-   (`manifest-validation.ts`; `schemaVersion` 2, 1 and the unversioned draft), sanitize the README, store preview images in R2, and write the
+   (`manifest-validation.ts`; `schemaVersion` 2 or 1, as ClarkCant reads them), sanitize the README, store preview images in R2, and write the
    immutable version row.
 3. **social card**: render the package card (`social-card.ts`, SVG).
 4. **finalize**: move the latest pointer, refresh the FTS index, close the submission, write the audit record. The
@@ -48,12 +48,14 @@ Resource limits in the ingest stage (`package-archive.ts`, `tar-reader.ts`, `ind
 | Previews | first `cover.*` plus 7 others, 5 MiB each, 16 MiB total, first copy of a path wins | extra previews are skipped |
 | README source | 256 KiB | README omitted; `readme` warn check records why |
 | Rendered README HTML | 512 KiB | HTML omitted (source kept); `readme` warn check |
+| `clarkcant.json` | 256 KiB | rejected, `manifest_invalid` |
+| Permission rows per version | 2048 | rejected, `manifest_too_large` |
 
 README limits never fail the version: the README is a deterministic fact of an immutable version, so retrying
 could only repeat the result. The HTML cap keeps the version row well under D1's 2 MB row limit.
 
 A package that fails a check is rejected with an `IndexingRejectedError` code (`indexing-errors.ts`:
-`package_not_found`, `integrity_mismatch`, `manifest_invalid`, `tarball_too_large`, `invalid_packument` for a
+`package_not_found`, `integrity_mismatch`, `manifest_invalid`, `manifest_too_large`, `tarball_too_large`, `invalid_packument` for a
 malformed tarball URL, …) recorded on the submission; nothing is published.
 
 ## What indexing establishes, and what it does not
@@ -77,28 +79,44 @@ the tarball with `npm pack` in the package's directory.
 ## Keeping the manifest mirror in sync with ClarkCant
 
 `packages/contracts/src/manifest.ts` copies ClarkCant's manifest contract rather than importing it, so the two can
-drift. `fixtures/upstream/clarkcant/` holds real manifests from ClarkCant: every
-`examples/reference-apps/*/clarkcant.json` and the manifest `clark widget init --template blank` writes.
-`UPSTREAM.json` records the repository, the full commit SHA, each file's source path and sha256, and the sha256 of
-the ClarkCant contract sources the mirror follows.
+drift. `fixtures/upstream/clarkcant/` records ClarkCant at one commit, in both directions:
 
-- `pnpm contract:check` proves the vendored files are byte-for-byte what `UPSTREAM.json` records and that the mirror
-  accepts every one. It is part of `pnpm test`, so `pnpm verify` and CI run it.
-- `packages/marketplace/test/indexing-upstream-manifests.test.ts` packs each fixture with `npm pack` and indexes it
-  through the real pipeline against D1.
+- **Manifests ClarkCant ships**: every `examples/reference-apps/*` and `examples/themes/*` manifest, the manifests
+  under `apps/web/e2e/fixtures/` (including `schemaVersion` 1 files), and the one `clark widget init --template
+  blank` writes, each with ClarkCant's verdict on it.
+- **Manifests ClarkCant refuses**: `verdicts.json`, a corpus of hostile variants of a few of those manifests (a field
+  deleted, set to the wrong type, an empty or out-of-range value, a duplicated entry, an unknown field), each with the
+  verdict of ClarkCant's real `parseManifest` (`packages/core/src/widget-package.ts`).
+
+`UPSTREAM.json` records the repository, the full commit SHA, each file's source path, sha256 and verdict, the sha256 and
+size of `verdicts.json`, and the sha256 of the ClarkCant contract sources the mirror follows.
+
+- `pnpm contract:check` proves the recordings are byte-for-byte what `UPSTREAM.json` lists and that the mirror reaches
+  ClarkCant's verdict on every shipped manifest and every hostile variant: it accepts what ClarkCant accepts and
+  refuses what ClarkCant refuses. It is part of `pnpm test`, so `pnpm verify` and CI run it.
+- `packages/marketplace/test/indexing-upstream-manifests.test.ts` packs each reference app and the blank template with
+  `npm pack` and indexes it through the real pipeline against D1.
+- The **Upstream ClarkCant contract** workflow (`.github/workflows/upstream-contract.yml`) runs weekly and on demand.
+  It checks out ClarkCant's `main`, runs the sync in check mode (`--check`, which writes nothing) and fails when a
+  contract source hash, a shipped manifest or any verdict differs from the pin. It then opens one issue titled
+  "ClarkCant's manifest contract moved away from the marketplace's pin", or comments on it if it is already open,
+  with the drift report.
 
 To refresh, with a clean ClarkCant checkout at the commit to pin and its dependencies installed (`pnpm install`):
 
 ```sh
-pnpm contract:sync --from ../clarkcant
+pnpm contract:sync --from ../clarkcant --check   # report what changed, write nothing
+pnpm contract:sync --from ../clarkcant           # refresh; refuses if the contract or a verdict changed
+pnpm contract:sync --from ../clarkcant --accept  # refresh after porting the change
 pnpm contract:check
 ```
 
-The script reads the manifests from the checkout's `HEAD`, runs the checkout's own CLI for the blank template, and
-refuses when the CLI or contract packages have uncommitted changes. It warns when a contract source hash changed:
-read that diff in ClarkCant (`install.ts`, `primitives.ts`, `grants.ts`, the `service-*` modules,
-`resource-profiles.ts`, `widget-package.ts`), port it to `manifest.ts` with a test, and run `pnpm verify`. Never edit
-the vendored files by hand; the check fails on any change.
+The script reads the manifests from the checkout's `HEAD`, runs the checkout's own CLI for the blank template and its
+own manifest reader for the verdicts, and refuses when the CLI, contracts or core packages have uncommitted changes.
+When a contract source hash or a verdict changed it exits non-zero and writes nothing, unless `--accept` is passed.
+Read that diff in ClarkCant (`install.ts`, `primitives.ts`, `grants.ts`, `network-origin.ts`, `browser-token.ts`,
+the `service-*` modules, `resource-profiles.ts`, `widget-package.ts`), port it to `manifest.ts` with a test, then
+refresh with `--accept` and run `pnpm verify`. Never edit the recordings by hand; the check fails on any change.
 
 ## Extending
 

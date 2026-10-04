@@ -29,6 +29,19 @@ export function mdCode(code: string, language = ""): string {
   return `${fence}${language}\n${code}\n${fence}`;
 }
 
+/**
+ * An inline code span that shows `value` literally: the fence is longer than any backtick run inside it, so the value
+ * cannot close the span early and turn the rest into links or HTML. Code spans are single-line, so newlines become
+ * spaces; a value that starts or ends with a backtick or a space is padded, because CommonMark strips one space.
+ */
+export function mdInlineCode(value: string): string {
+  const text = value.replace(/\r?\n/g, " ");
+  const longest = Math.max(0, ...[...text.matchAll(/`+/g)].map((match) => match[0].length));
+  const fence = "`".repeat(longest + 1);
+  const pad = /^[`\s]|[`\s]$/.test(text) ? " " : "";
+  return `${fence}${pad}${text}${pad}${fence}`;
+}
+
 export function mdTableCell(value: string): string {
   return escapeMarkdown(value);
 }

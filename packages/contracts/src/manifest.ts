@@ -57,6 +57,21 @@ export type EffectCategory = z.infer<typeof effectCategorySchema>;
 export const facetKindSchema = z.enum(["tools", "ui", "skills", "prompts", "themes", "setup", "driver", "voice"]);
 export type FacetKind = z.infer<typeof facetKindSchema>;
 
+/**
+ * The npm keyword ClarkCant's packaging convention adds to `package.json` for each facet kind a package carries, next to
+ * `clarkcant`. Discovery needs only `clarkcant`; these help people browsing npm.
+ */
+export const NPM_FACET_KEYWORDS: Readonly<Record<FacetKind, string>> = {
+  ui: "clarkcant-widget",
+  tools: "clarkcant-service",
+  skills: "clarkcant-skill",
+  prompts: "clarkcant-prompt",
+  themes: "clarkcant-theme",
+  setup: "clarkcant-setup",
+  driver: "clarkcant-driver",
+  voice: "clarkcant-voice",
+};
+
 /** Execution lane. Shown to users as the risk lane; each value is labelled distinctly in the UI. */
 export const isolationClassSchema = z.enum(["declarative", "service", "isolated-ui", "trusted-native"]);
 export type IsolationClass = z.infer<typeof isolationClassSchema>;
@@ -616,7 +631,8 @@ export function upgradeWidgetManifestV1(manifest: WidgetPackageManifest): unknow
 }
 
 /* ------------------------------------------------------------------ *
- * schemaVersion-less install draft (kept for compatibility)
+ * schemaVersion-less install draft: no longer accepted for new versions, kept so that versions indexed under it
+ * stay readable (`clarkcantManifestSchema`, `normalizeStoredManifest`)
  * ------------------------------------------------------------------ */
 
 export const legacyFacetDeclarationSchema = z.strictObject({
@@ -861,8 +877,10 @@ function problemIssue(problem: string): ManifestIssue {
 
 /**
  * Reads a parsed `clarkcant.json` the way ClarkCant does: by its `schemaVersion`, with a schemaVersion 1 manifest
- * upgraded to the canonical shape and held to the same rules, so the marketplace lists only manifests ClarkCant reads.
- * The schemaVersion-less draft is the one marketplace-only allowance. Every issue names the field it is about.
+ * upgraded to the canonical shape and held to the same rules, so the marketplace lists only manifests ClarkCant's
+ * manifest reader accepts. A manifest without `schemaVersion` (the early install draft) is refused: ClarkCant no longer
+ * reads it. Versions indexed under that draft stay readable through {@link normalizeStoredManifest}. Every issue names
+ * the field it is about.
  */
 export function readClarkcantManifest(value: unknown): ManifestReadResult {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
@@ -871,20 +889,15 @@ export function readClarkcantManifest(value: unknown): ManifestReadResult {
   const schemaVersion = (value as { schemaVersion?: unknown }).schemaVersion;
 
   if (schemaVersion === undefined) {
-    const legacy = legacyInstallManifestSchema.safeParse(value);
-    if (!legacy.success) {
-      return {
-        ok: false,
-        issues: [
-          {
-            path: "schemaVersion",
-            message: `is missing; ClarkCant manifests declare schemaVersion ${String(PACKAGE_MANIFEST_SCHEMA_VERSION)} (a manifest without it is read as the older install draft, which this one does not match either)`,
-          },
-          ...zodIssues(legacy.error),
-        ],
-      };
-    }
-    return { ok: true, manifest: legacy.data, normalized: normalizeManifest(legacy.data) };
+    return {
+      ok: false,
+      issues: [
+        {
+          path: "schemaVersion",
+          message: `is missing; ClarkCant reads manifests that declare schemaVersion ${String(PACKAGE_MANIFEST_SCHEMA_VERSION)} (or 1, the widget-only format), so add "schemaVersion": ${String(PACKAGE_MANIFEST_SCHEMA_VERSION)}`,
+        },
+      ],
+    };
   }
 
   let canonicalInput: unknown = value;

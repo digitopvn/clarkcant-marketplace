@@ -2,7 +2,7 @@ import { MarketplaceError } from "@marketplace/contracts";
 import { describe, expect, it } from "vitest";
 
 import { MAX_DOCUMENT_BYTES, PageOperationError, applyPageOperations, parsePageDocument, registryBlockDefaults, validatePageDocument } from "../src";
-import { escapeMarkdown } from "../src/markdown-text";
+import { escapeMarkdown, mdInlineCode } from "../src/markdown-text";
 import { documentWith } from "./support";
 
 const hero = { id: "hero", type: "hero", version: 1, props: { title: "Hello" } };
@@ -115,6 +115,14 @@ describe("markdown escaping", () => {
     expect(escapeMarkdown("# not a heading")).toBe("\\# not a heading");
     expect(escapeMarkdown("- not a list")).toBe("\\- not a list");
     expect(escapeMarkdown(["two", "lines"].join(String.fromCharCode(10)))).toBe("two lines");
+  });
+
+  it("fences inline code so the value cannot close the span", () => {
+    expect(mdInlineCode("tasks.write")).toBe("`tasks.write`");
+    expect(mdInlineCode("a`b")).toBe("``a`b``");
+    expect(mdInlineCode("x``[l](u)`")).toBe("``` x``[l](u)` ```");
+    expect(mdInlineCode(" padded")).toBe("`  padded `");
+    expect(mdInlineCode(["two", "lines"].join(String.fromCharCode(10)))).toBe("`two lines`");
   });
 
   it("rejects block props that are not in the block's schema", () => {

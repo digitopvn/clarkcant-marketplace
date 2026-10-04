@@ -1,7 +1,11 @@
 import type { IngestMessage } from "@marketplace/contracts";
+import { packagePermissions, packageVersions } from "@marketplace/db";
+import { eq } from "drizzle-orm";
+import { env } from "cloudflare:workers";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import {
+  createMarketplaceDeps,
   discoverNpmPackages,
   getPackage,
   handleIngestMessage,
@@ -12,8 +16,9 @@ import {
   type MarketplaceDeps,
   type NpmRegistry,
 } from "../src";
-import { validateManifest } from "../src/indexing/manifest-validation";
+import { MAX_PERMISSION_ROWS, validateManifest } from "../src/indexing/manifest-validation";
 import { createAccount, fixtureRegistry, indexingDeps, resetIndexingState, upstreamPackages } from "./support/indexing-fixtures";
+import { instrumentD1 } from "./support/instrumented-d1";
 
 /**
  * Every manifest vendored from ClarkCant (`fixtures/upstream/clarkcant`, pinned by `UPSTREAM.json`) is packed with
@@ -200,6 +205,32 @@ describe("incoherent or unsupported v2 manifests are refused with the reason", (
     expect(result).toMatchObject({ status: "rejected", code: "manifest_invalid" });
     expect(result.status === "rejected" ? result.reason : "").toContain(
       "capability com.clarkcant.reference.connected-app.list-tasks@1 requires scope tasks.delete, which the connection does not request",
+    );
+  });
+
+  it("stores a version at the permission-row limit, and refuses one past it by name", async () => {
+    const registry = await fixtureRegistry([{ variant: "maxPermissionRows" }, { variant: "tooManyPermissionRows" }]);
+    // Through a D1 that enforces the per-statement parameter limit local SQLite does not.
+    const instrumented = instrumentD1(env.DB);
+    deps = createMarketplaceDeps({ d1: instrumented.d1, media: env.MEDIA });
+
+    const atLimit = await index(registry, "@clarkcant/example-max-permissions");
+    if (atLimit.status !== "indexed") throw new Error(`the package at the limit was not indexed: ${JSON.stringify(atLimit)}`);
+    const stored = await deps.db
+      .select({ value: packagePermissions.value })
+      .from(packagePermissions)
+      .innerJoin(packageVersions, eq(packageVersions.id, packagePermissions.packageVersionId))
+      .where(eq(packageVersions.packageId, atLimit.packageId));
+    expect(stored).toHaveLength(MAX_PERMISSION_ROWS);
+    expect(new Set(stored.map((row) => row.value)).size).toBe(MAX_PERMISSION_ROWS);
+    expect((await getPackage(deps, "@clarkcant/example-max-permissions")).latest?.facets).toHaveLength(1 + MAX_PERMISSION_ROWS / 64);
+    expect(instrumented.maxBoundParameters()).toBeLessThanOrEqual(100);
+    expect(instrumented.executed.length).toBeLessThan(1000);
+
+    const pastLimit = await index(registry, "@clarkcant/example-too-many-permissions");
+    expect(pastLimit).toMatchObject({ status: "rejected", code: "manifest_too_large" });
+    expect(pastLimit.status === "rejected" ? pastLimit.reason : "").toContain(
+      `declares ${String(MAX_PERMISSION_ROWS + 1)} distinct permissions`,
     );
   });
 
