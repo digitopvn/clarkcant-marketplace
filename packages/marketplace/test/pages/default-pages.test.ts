@@ -95,7 +95,13 @@ describe("default pages", () => {
     expect(subprocessors).toContain("registry.npmjs.org");
     // Undecided company facts are placeholders, never invented.
     expect(await markdown("terms")).toContain("TO BE CONFIRMED");
-    expect(await markdown("cookies")).toContain("`cc_consent`");
+    const cookies = await markdown("cookies");
+    expect(cookies).toContain("`cc_consent`");
+    // Analytics is described as opt-in everywhere it is mentioned.
+    expect(cookies).toContain("**Analytics** (off until you allow it)");
+    expect(await markdown("privacy")).toContain("Analytics only if you opt in");
+    expect(security).toContain("no third-party scripts except Cloudflare Web Analytics, which loads only after you opt in");
+    expect(subprocessors).toContain("Web Analytics (only for visitors who opt in)");
   });
 });
 

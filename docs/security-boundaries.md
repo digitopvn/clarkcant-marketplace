@@ -80,7 +80,9 @@ Set on every response by `apps/web/src/middleware/security-headers.ts`:
 | `Cross-Origin-Opener-Policy` | `same-origin` |
 
 **CSP.** Pages use Astro's hashed policy (`security.csp` in `apps/web/astro.config.ts`), which Astro sends as a
-`Content-Security-Policy` response header on this adapter (checked on staging), not a `<meta>` tag: scripts only from `'self'` plus hashes of inline scripts, styles from `'self'`, Google Fonts
+`Content-Security-Policy` response header on this adapter (checked on staging), not a `<meta>` tag: scripts only from
+`'self'`, `https://static.cloudflareinsights.com` (the consent-gated Web Analytics beacon, the only third-party script)
+plus hashes of inline scripts; `connect-src 'self' https://cloudflareinsights.com` (where the beacon reports); styles from `'self'`, Google Fonts
 and hashes of inline `<style>` elements; `object-src 'none'`, `base-uri 'self'`, `form-action 'self'`. The
 middleware adds the header-only directives (`frame-ancestors`, `upgrade-insecure-requests`) without overriding what
 Astro set (`mergeCsp`). Non-HTML responses get `default-src 'none'`. Inline content Astro does not hash itself:
@@ -116,10 +118,21 @@ dampers, not quotas.
 ## Cookies and consent
 
 Only first-party cookies are used: the Better Auth session (essential) and `cc_consent` (the visitor's choice,
-180 days). The only optional storage is the theme preference in `localStorage`, written only after "Allow
-preferences" and erased when preferences are declined (`components/consent/`). There are no analytics or
-advertising cookies, so there is no analytics category. Adding any non-essential tracking requires a new consent
-category first.
+180 days, value `v2.p<0|1>.a<0|1>`; an older `v1` value predates analytics and asks again). Two optional categories,
+both off by default and toggled in the banner ("Choose", or "Cookie settings" in the footer) in
+`apps/web/src/components/consent/`:
+
+- **Preferences**: the theme preference in `localStorage`, written only with this consent and erased when it is
+  declined.
+- **Analytics**: privacy-friendly, cookieless Cloudflare Web Analytics, page views only. The banner script adds the
+  beacon (`https://static.cloudflareinsights.com/beacon.min.js` with `data-cf-beacon` holding the site token) only
+  when the stored choice allows analytics and the environment sets the public `CF_WEB_ANALYTICS_TOKEN` var, rendered
+  on the banner as `data-analytics-token`. No token (or a malformed one, logged as `analytics_token_invalid`) means
+  nothing loads. Withdrawing consent stops the beacon from the next page; a beacon already running finishes the
+  current page view. Zone-level automatic injection must stay off, or the beacon would run without consent.
+
+There is no advertising. Adding any other non-essential tracking requires a new consent category and cookie version
+first.
 
 ## Legal pages
 

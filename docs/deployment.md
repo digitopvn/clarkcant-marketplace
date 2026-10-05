@@ -66,7 +66,11 @@ branches, PR branches must be allowed for previews to run.
 
 Worker vars (`wrangler.jsonc`, `env.<env>.vars`): `PUBLIC_SITE_URL` (absolute origin; Workers refuse requests while
 it is empty) and `ENVIRONMENT` (`staging` | `production`). `robots.txt` allows indexing only when
-`ENVIRONMENT=production`, so staging never competes with production in search results.
+`ENVIRONMENT=production`, so staging never competes with production in search results. The web Worker also has
+`CF_WEB_ANALYTICS_TOKEN`, the public Cloudflare Web Analytics site token for that host (empty disables analytics); the
+beacon loads only after a visitor opts in to analytics ([consent](security-boundaries.md#cookies-and-consent)). Keep
+Web Analytics automatic injection turned off for these hostnames in the dashboard: an injected beacon would run
+without consent.
 
 Domains: the web Worker is served on Workers Custom Domains in the `clarkcant.cc` Cloudflare zone,
 `staging.marketplace.clarkcant.cc` (staging) and `marketplace.clarkcant.cc` (production), declared as `routes` with

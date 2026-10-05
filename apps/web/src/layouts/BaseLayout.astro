@@ -9,7 +9,7 @@ import ConsentBanner from "../components/consent/ConsentBanner.astro";
 import SeoHead from "../components/seo/SeoHead.astro";
 import ShareBar from "../components/share/ShareBar.astro";
 import { THEME_SCRIPT } from "../components/theme-script";
-import { runtimeVars } from "../server/request-context";
+import { analyticsToken, runtimeVars } from "../server/request-context";
 
 /**
  * Public, indexable pages pass `seo`. Pages without it (sign-in, account, admin, previews, errors) are utility
@@ -82,6 +82,6 @@ const lang = seo?.locale ?? "en";
       {showShare && <ShareBar title={title} canonicalUrl={meta.canonical} markdownUrl={meta.markdownUrl} />}
     </main>
     <SiteFooter />
-    <ConsentBanner />
+    <ConsentBanner analyticsToken={analyticsToken()} />
   </body>
 </html>

@@ -92,7 +92,8 @@ test.describe("security headers", () => {
     // Astro delivers the hashed policy as a header on this adapter (a <meta> tag elsewhere); accept either.
     const meta = await page.locator('meta[http-equiv="content-security-policy" i]').getAttribute("content", { timeout: 1_000 }).catch(() => null);
     const policy = meta ?? response?.headers()["content-security-policy"] ?? "";
-    expect(policy).toContain("script-src 'self'");
+    expect(policy).toContain("script-src 'self' https://static.cloudflareinsights.com");
+    expect(policy).toContain("connect-src 'self' https://cloudflareinsights.com");
     expect(policy).toMatch(/sha256-/);
     expect(response?.headers()["content-security-policy"]).toContain("frame-ancestors 'none'");
     await page.waitForLoadState("networkidle");
@@ -230,6 +231,47 @@ test.describe("share bar", () => {
   });
 });
 
+/** Stand-in site token, used only when the environment under test has no CF_WEB_ANALYTICS_TOKEN configured. */
+const TEST_ANALYTICS_TOKEN = "0123456789abcdef0123456789abcdef";
+const BEACON_SRC = "https://static.cloudflareinsights.com/beacon.min.js";
+const CLOUDFLARE_INSIGHTS = /^https:\/\/(?:static\.)?cloudflareinsights\.com\//;
+
+/**
+ * Keeps Cloudflare Web Analytics off the network and makes sure every page under test has a site token. Requests to
+ * the Cloudflare Insights origins are recorded: the beacon gets an empty stub script and reports are aborted. HTML
+ * documents without a configured token get the stand-in token on the banner, the way the server renders a
+ * configured one, so the client gating is exercised whatever the environment's configuration.
+ */
+async function interceptAnalytics(page: Page): Promise<{ requests: string[]; cspViolations: string[] }> {
+  const requests: string[] = [];
+  const cspViolations: string[] = [];
+  page.on("console", (message) => {
+    if (/Content Security Policy/i.test(message.text())) cspViolations.push(message.text());
+  });
+  page.on("request", (request) => {
+    if (CLOUDFLARE_INSIGHTS.test(request.url())) requests.push(request.url());
+  });
+  await page.route(CLOUDFLARE_INSIGHTS, (route) =>
+    route.request().url().startsWith(BEACON_SRC)
+      ? route.fulfill({ status: 200, contentType: "application/javascript", body: "/* beacon stub */" })
+      : route.abort(),
+  );
+  await page.route("**/*", async (route) => {
+    if (route.request().resourceType() !== "document") return route.fallback();
+    const response = await route.fetch();
+    const html = await response.text();
+    const body = html.includes("data-analytics-token=")
+      ? html
+      : html.replace("data-consent-banner", `data-consent-banner data-analytics-token="${TEST_ANALYTICS_TOKEN}"`);
+    // The body is decoded, so drop the encoding and length of the original response; the CSP header is kept.
+    const headers = Object.fromEntries(
+      Object.entries(response.headers()).filter(([name]) => name !== "content-encoding" && name !== "content-length"),
+    );
+    return route.fulfill({ status: response.status(), headers, body });
+  });
+  return { requests, cspViolations };
+}
+
 test.describe("cookie consent", () => {
   test("stores nothing before a choice and honours it afterwards", async ({ page, context }) => {
     await page.goto("/");
@@ -239,19 +281,85 @@ test.describe("cookie consent", () => {
 
     await banner.getByRole("button", { name: "Essential only" }).click();
     await expect(banner).toBeHidden();
-    expect((await context.cookies()).map((cookie) => `${cookie.name}=${cookie.value}`)).toEqual(["cc_consent=v1.p0"]);
+    expect((await context.cookies()).map((cookie) => `${cookie.name}=${cookie.value}`)).toEqual(["cc_consent=v2.p0.a0"]);
     // Without preferences consent, a theme choice applies to this view only.
     await page.waitForLoadState("networkidle");
     await page.getByRole("button", { name: /^Theme:/ }).click();
     await expect(page.getByRole("button", { name: /^Theme: Light/ })).toBeVisible();
     expect(await page.evaluate(() => localStorage.getItem("theme"))).toBeNull();
 
+    // Cookie settings reopens the banner with each category's current state.
     await page.getByRole("button", { name: "Cookie settings" }).click();
-    await banner.getByRole("button", { name: "Allow preferences" }).click();
+    const preferences = banner.getByRole("checkbox", { name: /Preferences/ });
+    await expect(preferences).not.toBeChecked();
+    await expect(banner.getByRole("checkbox", { name: /Analytics/ })).not.toBeChecked();
+    await preferences.check();
+    await banner.getByRole("button", { name: "Save choices" }).click();
     expect(await page.evaluate(() => localStorage.getItem("theme"))).toBe("light");
+    expect((await context.cookies()).map((cookie) => `${cookie.name}=${cookie.value}`)).toEqual(["cc_consent=v2.p1.a0"]);
     await page.reload();
     await expect(banner).toBeHidden();
     expect(await page.evaluate(() => document.documentElement.dataset.theme)).toBe("light");
+  });
+
+  test("Cloudflare Web Analytics loads only after opt-in and stops after withdrawal", async ({ page, context }) => {
+    const { requests, cspViolations } = await interceptAnalytics(page);
+    const beacon = page.locator(`script[src="${BEACON_SRC}"]`);
+    const banner = page.getByRole("region", { name: "Cookies and storage" });
+
+    // No choice yet: nothing loads.
+    await page.goto("/", { waitUntil: "networkidle" });
+    await expect(banner).toBeVisible();
+    const token = (await page.locator("[data-consent-banner]").getAttribute("data-analytics-token")) ?? "";
+    expect(token).not.toBe("");
+    await expect(beacon).toHaveCount(0);
+
+    // Essential only: still nothing, on this page or the next.
+    await banner.getByRole("button", { name: "Essential only" }).click();
+    await page.reload({ waitUntil: "networkidle" });
+    await expect(beacon).toHaveCount(0);
+    expect(requests).toEqual([]);
+
+    // Opt in to analytics alone: the beacon is added with the configured token, now and on later pages.
+    await page.getByRole("button", { name: "Cookie settings" }).click();
+    await banner.getByRole("checkbox", { name: /Analytics/ }).check();
+    await banner.getByRole("button", { name: "Save choices" }).click();
+    await expect(banner).toBeHidden();
+    await expect(beacon).toHaveCount(1);
+    expect(JSON.parse((await beacon.getAttribute("data-cf-beacon")) ?? "null")).toEqual({ token });
+    expect((await context.cookies()).map((cookie) => `${cookie.name}=${cookie.value}`)).toEqual(["cc_consent=v2.p0.a1"]);
+    expect(requests).toContain(BEACON_SRC);
+    await page.reload({ waitUntil: "networkidle" });
+    await expect(beacon).toHaveCount(1);
+
+    // Withdraw: the next page does not load it, and nothing reloads by itself.
+    await page.getByRole("button", { name: "Cookie settings" }).click();
+    await expect(banner.getByRole("checkbox", { name: /Analytics/ })).toBeChecked();
+    await banner.getByRole("checkbox", { name: /Analytics/ }).uncheck();
+    await banner.getByRole("button", { name: "Save choices" }).click();
+    requests.length = 0;
+    await page.reload({ waitUntil: "networkidle" });
+    await expect(beacon).toHaveCount(0);
+    expect(requests).toEqual([]);
+    expect((await context.cookies()).map((cookie) => `${cookie.name}=${cookie.value}`)).toEqual(["cc_consent=v2.p0.a0"]);
+
+    // Under a production build this also proves the policy allows the beacon and blocks nothing in either state.
+    expect(cspViolations).toEqual([]);
+  });
+
+  test("with no site token configured nothing loads, even with analytics consent", async ({ page }) => {
+    const requests: string[] = [];
+    page.on("request", (request) => {
+      if (CLOUDFLARE_INSIGHTS.test(request.url())) requests.push(request.url());
+    });
+    await page.route(CLOUDFLARE_INSIGHTS, (route) => route.abort());
+    await page.goto("/");
+    const configured = await page.locator("[data-consent-banner]").getAttribute("data-analytics-token");
+    test.skip(configured !== null, "This environment has CF_WEB_ANALYTICS_TOKEN configured");
+    await page.getByRole("region", { name: "Cookies and storage" }).getByRole("button", { name: "Allow all" }).click();
+    await page.reload({ waitUntil: "networkidle" });
+    await expect(page.locator(`script[src="${BEACON_SRC}"]`)).toHaveCount(0);
+    expect(requests).toEqual([]);
   });
 });
 
@@ -324,7 +432,7 @@ test.describe("accessibility and layout", () => {
     await page.goto("/");
     const banner = page.getByRole("region", { name: "Cookies and storage" });
     await expect(banner).toBeVisible();
-    await expect(banner).toContainText("tracking. Cookie policy");
+    await expect(banner).toContainText("Web Analytics. Cookie policy");
     expect((await banner.boundingBox())?.height ?? 999).toBeLessThanOrEqual(160);
   });
 
