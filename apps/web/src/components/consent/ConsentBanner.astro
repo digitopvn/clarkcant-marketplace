@@ -1,9 +1,18 @@
 ---
 /**
  * Cookie and storage choices. Shown by its script (so cached HTML never carries one visitor's state) when no valid
- * `cc_consent` cookie exists, and reopened from the footer's "Cookie settings" button. Nothing optional is stored
- * before a choice; "Essential only" also erases a previously stored preference.
+ * `cc_consent` cookie exists, and reopened from the footer's "Cookie settings" button with the categories expanded.
+ * Nothing optional is stored or loaded before a choice; "Essential only" also erases a previously stored preference.
+ *
+ * Analytics (Cloudflare Web Analytics) loads only when the visitor allowed it and the environment configured a site
+ * token, which is public and rendered as `data-analytics-token`. Withdrawing consent stops it from the next page.
  */
+interface Props {
+  /** Public Cloudflare Web Analytics site token, or null when analytics is not configured. */
+  analyticsToken: string | null;
+}
+
+const { analyticsToken } = Astro.props;
 ---
 
 <section
@@ -12,58 +21,137 @@
   aria-labelledby="cookie-consent-title"
   hidden
   data-consent-banner
+  data-analytics-token={analyticsToken ?? undefined}
 >
   <div class="container-page flex flex-col gap-2 py-2.5 sm:flex-row sm:items-end sm:justify-between sm:gap-3 sm:py-4">
     <div class="max-w-2xl text-sm">
       <h2 id="cookie-consent-title" class="font-medium text-ink">Cookies and storage</h2>
       <p class="consent-copy mt-0.5 text-muted sm:mt-1">
-        Essential cookies keep you signed in and remember this choice. With your permission we also remember your
-        theme on this device. There is no analytics or advertising tracking.{" "}
-        <a class="text-accent underline" href="/cookies">Cookie policy</a>
+        Essential cookies keep you signed in. If you allow it, we also remember your theme and measure page views and load times with
+        cookieless Cloudflare Web Analytics.{" "}
+        <a class="text-accent underline" href="/cookies">Cookie policy</a>{" "}
+        <button
+          type="button"
+          class="consent-link"
+          aria-expanded="false"
+          aria-controls="cookie-consent-options"
+          data-consent-customize
+        >
+          Choose
+        </button>
       </p>
+      <fieldset id="cookie-consent-options" class="consent-options" hidden data-consent-options>
+        <legend class="sr-only">Optional categories</legend>
+        <label class="consent-option">
+          <input type="checkbox" data-consent-category="preferences" />
+          <span><strong class="font-medium text-ink">Preferences</strong>: remember your light or dark theme on this device.</span>
+        </label>
+        <label class="consent-option">
+          <input type="checkbox" data-consent-category="analytics" />
+          <span>
+            <strong class="font-medium text-ink">Analytics</strong>: privacy-friendly, cookieless Cloudflare Web Analytics
+            that counts page views and measures page load times. It runs only after you opt in.
+          </span>
+        </label>
+        <button type="button" class="consent-button" data-consent-save>Save choices</button>
+      </fieldset>
     </div>
     <div class="flex shrink-0 gap-2">
       <button type="button" class="consent-button" data-consent-choice="essential">Essential only</button>
-      <button type="button" class="consent-button consent-button-primary" data-consent-choice="preferences">
-        Allow preferences
-      </button>
+      <button type="button" class="consent-button consent-button-primary" data-consent-choice="all">Allow all</button>
     </div>
   </div>
 </section>
 
 <script>
-  import { CONSENT_COOKIE, CONSENT_EVENT, THEME_STORAGE_KEY, consentCookieString, consentFromCookieHeader } from "./consent";
+  import { CF_BEACON_SRC, beaconConfig, shouldLoadBeacon } from "./analytics";
+  import {
+    CONSENT_COOKIE,
+    CONSENT_EVENT,
+    ESSENTIAL_ONLY,
+    THEME_STORAGE_KEY,
+    consentCookieString,
+    consentFromCookieHeader,
+    type ConsentState,
+  } from "./consent";
 
   const banner = document.querySelector<HTMLElement>("[data-consent-banner]");
+  const options = banner?.querySelector<HTMLElement>("[data-consent-options]") ?? null;
+  const customize = banner?.querySelector<HTMLButtonElement>("[data-consent-customize]") ?? null;
+  const analyticsToken = banner?.dataset.analyticsToken ?? null;
+
+  function category(name: keyof ConsentState): HTMLInputElement | null {
+    return banner?.querySelector<HTMLInputElement>(`input[data-consent-category="${name}"]`) ?? null;
+  }
+
+  function showOptions(show: boolean): void {
+    if (options) options.hidden = !show;
+    customize?.setAttribute("aria-expanded", String(show));
+  }
+
+  function storedChoice(): ConsentState | null {
+    return consentFromCookieHeader(document.cookie);
+  }
+
+  /** Adds the Cloudflare Web Analytics beacon once per page view, only with analytics consent and a configured token. */
+  function loadAnalytics(state: ConsentState): void {
+    if (!shouldLoadBeacon(state, analyticsToken)) return;
+    if (document.querySelector(`script[src="${CF_BEACON_SRC}"]`)) return;
+    const script = document.createElement("script");
+    script.defer = true;
+    script.dataset.cfBeacon = beaconConfig(analyticsToken);
+    script.src = CF_BEACON_SRC;
+    document.head.appendChild(script);
+  }
 
   function open(): void {
     if (!banner) return;
+    const state = storedChoice() ?? ESSENTIAL_ONLY;
+    const preferences = category("preferences");
+    const analytics = category("analytics");
+    if (preferences) preferences.checked = state.preferences;
+    if (analytics) analytics.checked = state.analytics;
     banner.hidden = false;
-    banner.querySelector<HTMLButtonElement>("[data-consent-choice='essential']")?.focus({ preventScroll: true });
+    showOptions(true);
+    preferences?.focus({ preventScroll: true });
   }
 
-  function save(preferences: boolean): void {
-    document.cookie = consentCookieString({ preferences }, location.protocol === "https:");
-    if (consentFromCookieHeader(document.cookie) === null) {
+  function save(state: ConsentState): void {
+    document.cookie = consentCookieString(state, location.protocol === "https:");
+    if (storedChoice() === null) {
       // Cookies are blocked: keep the banner closed for this view rather than trapping the visitor in it.
       console.warn(`${CONSENT_COOKIE} could not be stored; the choice applies to this page view only.`);
     }
-    if (!preferences) {
+    if (!state.preferences) {
       try {
         localStorage.removeItem(THEME_STORAGE_KEY);
       } catch {
         // Storage unavailable: nothing was stored.
       }
     }
-    document.dispatchEvent(new CustomEvent(CONSENT_EVENT, { detail: { preferences } }));
+    // A beacon already running keeps running for this page view; without consent the next page does not load it.
+    loadAnalytics(state);
+    document.dispatchEvent(new CustomEvent(CONSENT_EVENT, { detail: state }));
+    showOptions(false);
     if (banner) banner.hidden = true;
   }
 
   if (banner) {
     for (const button of banner.querySelectorAll<HTMLButtonElement>("[data-consent-choice]")) {
-      button.addEventListener("click", () => save(button.dataset.consentChoice === "preferences"));
+      const all = button.dataset.consentChoice === "all";
+      button.addEventListener("click", () => save({ preferences: all, analytics: all }));
     }
-    if (consentFromCookieHeader(document.cookie) === null) banner.hidden = false;
+    banner.querySelector<HTMLButtonElement>("[data-consent-save]")?.addEventListener("click", () =>
+      save({ preferences: category("preferences")?.checked === true, analytics: category("analytics")?.checked === true }),
+    );
+    customize?.addEventListener("click", () => {
+      const show = options?.hidden === true;
+      showOptions(show);
+      if (show) category("preferences")?.focus({ preventScroll: true });
+    });
+    const stored = storedChoice();
+    if (stored === null) banner.hidden = false;
+    else loadAnalytics(stored);
   }
   for (const trigger of document.querySelectorAll<HTMLElement>("[data-consent-open]")) {
     trigger.addEventListener("click", open);

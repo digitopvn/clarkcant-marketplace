@@ -15,7 +15,11 @@
   "vars": {
     "PUBLIC_SITE_URL": "http://localhost:4321",
     "ENVIRONMENT": "development",
-    "ADMIN_EMAILS": ""
+    "ADMIN_EMAILS": "",
+    // Public Cloudflare Web Analytics site token (dashboard > Analytics & Logs > Web Analytics > the site's JS snippet).
+    // Not a secret: it ships in every page that loads the beacon. Empty disables analytics. The beacon still loads only
+    // after the visitor opts in to the analytics consent category.
+    "CF_WEB_ANALYTICS_TOKEN": ""
   },
   "d1_databases": [
     {
@@ -53,7 +57,9 @@
       "vars": {
         // Deployed web origin, served on a Workers Custom Domain in the clarkcant.cc zone. ADMIN_EMAILS is a wrangler secret per env.
         "PUBLIC_SITE_URL": "https://staging.marketplace.clarkcant.cc",
-        "ENVIRONMENT": "staging"
+        "ENVIRONMENT": "staging",
+        // Public Web Analytics site token for this host; empty disables analytics (see the top-level note).
+        "CF_WEB_ANALYTICS_TOKEN": ""
       },
       "d1_databases": [
         {
@@ -89,7 +95,9 @@
       "vars": {
         // Deployed web origin; see the staging note.
         "PUBLIC_SITE_URL": "https://marketplace.clarkcant.cc",
-        "ENVIRONMENT": "production"
+        "ENVIRONMENT": "production",
+        // Public Web Analytics site token for this host; empty disables analytics (see the top-level note).
+        "CF_WEB_ANALYTICS_TOKEN": ""
       },
       "d1_databases": [
         {

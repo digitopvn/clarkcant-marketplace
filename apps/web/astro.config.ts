@@ -7,6 +7,7 @@ import { readFileSync } from "node:fs";
 
 import { BLOCK_STYLES } from "../../packages/page-engine/src/block-styles";
 import { CANVAS_SCRIPT, canvasStyle } from "./src/components/admin/canvas-document";
+import { CF_BEACON_ORIGIN, CF_REPORT_ORIGIN } from "./src/components/consent/analytics";
 import { THEME_SCRIPT } from "./src/components/theme-script";
 
 /** CSP source expression for inline content, hashed exactly as the browser hashes the element's text. */
@@ -23,6 +24,10 @@ function sha256(content: string): `sha256-${string}` {
 const TOKENS_CSS = readFileSync(new URL("./src/styles/tokens.css", import.meta.url), "utf8");
 const INLINE_SCRIPT_HASHES = [sha256(THEME_SCRIPT), sha256(CANVAS_SCRIPT)];
 const INLINE_STYLE_HASHES = [sha256(BLOCK_STYLES), sha256(canvasStyle(`${TOKENS_CSS}\n${BLOCK_STYLES}`))];
+
+// Cloudflare Web Analytics is the only third-party script origin: the site itself adds the beacon, and only after the
+// visitor opts in to analytics (components/consent/analytics.ts; zone auto-injection must stay off). The beacon is
+// loaded from CF_BEACON_ORIGIN and reports to CF_REPORT_ORIGIN.
 
 // Server-rendered on Cloudflare Workers. The target environment (top-level dev, `staging`, `production`) is chosen
 // at build time with CLOUDFLARE_ENV, which selects the matching block of wrangler.jsonc.
@@ -48,7 +53,8 @@ export default defineConfig({
         // README and preview images may be hosted by package authors; they can never run code.
         "img-src 'self' data: https:",
         "font-src 'self' https://fonts.gstatic.com",
-        "connect-src 'self'",
+        // The consent-gated Cloudflare Web Analytics beacon reports to this origin.
+        `connect-src 'self' ${CF_REPORT_ORIGIN}`,
         "object-src 'none'",
         "base-uri 'self'",
         "form-action 'self'",
@@ -62,7 +68,8 @@ export default defineConfig({
         hashes: INLINE_STYLE_HASHES,
       },
       scriptDirective: {
-        resources: ["'self'"],
+        // The Cloudflare Web Analytics beacon, added by the consent banner script only after analytics opt-in.
+        resources: ["'self'", CF_BEACON_ORIGIN],
         hashes: INLINE_SCRIPT_HASHES,
       },
     },
