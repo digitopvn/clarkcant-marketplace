@@ -27,7 +27,7 @@ const { analyticsToken } = Astro.props;
     <div class="max-w-2xl text-sm">
       <h2 id="cookie-consent-title" class="font-medium text-ink">Cookies and storage</h2>
       <p class="consent-copy mt-0.5 text-muted sm:mt-1">
-        Essential cookies keep you signed in. If you allow it, we also remember your theme and count page views with
+        Essential cookies keep you signed in. If you allow it, we also remember your theme and measure page views and load times with
         cookieless Cloudflare Web Analytics.{" "}
         <a class="text-accent underline" href="/cookies">Cookie policy</a>{" "}
         <button
@@ -50,7 +50,7 @@ const { analyticsToken } = Astro.props;
           <input type="checkbox" data-consent-category="analytics" />
           <span>
             <strong class="font-medium text-ink">Analytics</strong>: privacy-friendly, cookieless Cloudflare Web Analytics
-            that counts page views only. It runs only after you opt in.
+            that counts page views and measures page load times. It runs only after you opt in.
           </span>
         </label>
         <button type="button" class="consent-button" data-consent-save>Save choices</button>

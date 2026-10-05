@@ -5,7 +5,7 @@
  * The site sets no cookie and stores nothing for a signed-out visitor until they choose. Optional categories, both off
  * by default:
  * - preferences: the theme preference (`theme` in localStorage);
- * - analytics: Cloudflare Web Analytics (cookieless, page views only), loaded only after opt-in (see analytics.ts).
+ * - analytics: Cloudflare Web Analytics (cookieless, page views and load timing), loaded only after opt-in (see analytics.ts).
  * Any further category needs its own flag here and a new policy version.
  *
  * Cookie value: `v2.p<0|1>.a<0|1>`, e.g. `v2.p1.a0` (preferences allowed, analytics declined). A `v1` value predates

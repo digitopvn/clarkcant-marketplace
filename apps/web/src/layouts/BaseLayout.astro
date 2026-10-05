@@ -13,7 +13,7 @@ import { analyticsToken, runtimeVars } from "../server/request-context";
 
 /**
  * Public, indexable pages pass `seo`. Pages without it (sign-in, account, admin, previews, errors) are utility
- * pages: they are marked `noindex`, get no Markdown alternate and no share bar.
+ * pages: they are marked `noindex`, get no Markdown alternate, no share bar and never load analytics.
  */
 export interface SeoProps {
   /** Canonical site-relative path; defaults to the requested path. */
@@ -82,6 +82,7 @@ const lang = seo?.locale ?? "en";
       {showShare && <ShareBar title={title} canonicalUrl={meta.canonical} markdownUrl={meta.markdownUrl} />}
     </main>
     <SiteFooter />
-    <ConsentBanner analyticsToken={analyticsToken()} />
+    {/* Analytics only on public pages: utility page paths can carry credentials (preview tokens) or private ids. */}
+    <ConsentBanner analyticsToken={seo && !failed ? analyticsToken() : null} />
   </body>
 </html>

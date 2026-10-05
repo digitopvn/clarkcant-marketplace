@@ -124,7 +124,7 @@ both off by default and toggled in the banner ("Choose", or "Cookie settings" in
 
 - **Preferences**: the theme preference in `localStorage`, written only with this consent and erased when it is
   declined.
-- **Analytics**: privacy-friendly, cookieless Cloudflare Web Analytics, page views only. The banner script adds the
+- **Analytics**: privacy-friendly, cookieless Cloudflare Web Analytics, page views and page load timing. Utility pages (no `seo` prop: account, admin, sign-in, previews, errors) never load it, because their paths can carry credentials or private ids. The banner script adds the
   beacon (`https://static.cloudflareinsights.com/beacon.min.js` with `data-cf-beacon` holding the site token) only
   when the stored choice allows analytics and the environment sets the public `CF_WEB_ANALYTICS_TOKEN` var, rendered
   on the banner as `data-analytics-token`. No token (or a malformed one, logged as `analytics_token_invalid`) means

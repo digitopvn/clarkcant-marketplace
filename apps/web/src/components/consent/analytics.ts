@@ -2,7 +2,7 @@ import type { ConsentState } from "./consent";
 
 /**
  * Cloudflare Web Analytics, the only third-party script the site loads, and only after the visitor opts in to the
- * analytics category. It is cookieless and counts page views. The beacon is loaded from {@link CF_BEACON_ORIGIN} and
+ * analytics category. It is cookieless and counts page views and page load timing. The beacon is loaded from {@link CF_BEACON_ORIGIN} and
  * reports to {@link CF_REPORT_ORIGIN}; both are allowed in the CSP (astro.config.ts) and nothing else is.
  *
  * The site token is public (it ships in every page that loads the beacon) and comes from the `CF_WEB_ANALYTICS_TOKEN`

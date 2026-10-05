@@ -361,6 +361,14 @@ test.describe("cookie consent", () => {
     await expect(page.locator(`script[src="${BEACON_SRC}"]`)).toHaveCount(0);
     expect(requests).toEqual([]);
   });
+
+  test("utility pages never offer the beacon a site token, whatever the consent", async ({ request }) => {
+    const home = await (await request.get("/")).text();
+    test.skip(!home.includes("data-analytics-token="), "This environment has no CF_WEB_ANALYTICS_TOKEN configured");
+    // Preview paths carry a bearer token; Cloudflare Web Analytics records page paths.
+    const preview = await request.get("/preview/not-a-real-token", { headers: { cookie: "cc_consent=v2.p0.a1" } });
+    expect(await preview.text()).not.toContain("data-analytics-token=");
+  });
 });
 
 test.describe("accessibility and layout", () => {
