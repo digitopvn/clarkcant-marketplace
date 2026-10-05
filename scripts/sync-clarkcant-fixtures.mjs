@@ -173,7 +173,23 @@ function upstreamVerdicts(checkout, inputs) {
 
 // ---- The hostile corpus -------------------------------------------------------------------------------------------
 
-const STRING_VALUES = ["", "../escape", "https://evil.example", "com.example.other.thing@1", 7];
+/**
+ * Replacements for every string: emptiness, path escapes (relative, absolute, Windows), origins that are not canonical
+ * or not HTTP(S), a credential-bearing header name, foreign and malformed refs, and a wrong type.
+ */
+const STRING_VALUES = [
+  "",
+  "../escape",
+  "/abs",
+  "C:\\x",
+  "https://evil.example",
+  "https://X.example/",
+  "wss://a.example",
+  "Cookie",
+  "com.example.other.thing@1",
+  "a@0",
+  7,
+];
 const NUMBER_VALUES = [0, -1, 1.5, "1"];
 const BOOLEAN_VALUES = ["true", null];
 const SCHEMA_VERSIONS = [1, 2, 3, "2", null];
@@ -238,6 +254,17 @@ function caseId(entry) {
 
 // ---- Reading ClarkCant --------------------------------------------------------------------------------------------
 
+/** The sha256 of a committed file, or null when the commit no longer has it (renamed or removed upstream). */
+function sha256OfCommitted(show, path) {
+  let text;
+  try {
+    text = show(path);
+  } catch {
+    return null;
+  }
+  return sha256(text);
+}
+
 function readUpstream(from) {
   if (!existsSync(join(from, READER_MODULE))) {
     throw new SyncError(`${from} does not look like a ClarkCant checkout (no ${READER_MODULE})`);
@@ -290,7 +317,7 @@ function readUpstream(from) {
     repository: repositoryOf(from),
     commit,
     files: files.map((file, index) => ({ ...file, accepted: fileVerdicts[index].ok, problem: fileVerdicts[index].problem })),
-    contractSources: CONTRACT_SOURCES.map((source) => ({ source, sha256: sha256(show(source)) })),
+    contractSources: CONTRACT_SOURCES.map((source) => ({ source, sha256: sha256OfCommitted(show, source) })),
     cases: corpus.map((entry, index) => ({
       id: caseId(entry),
       ...entry,
@@ -337,7 +364,7 @@ function compare(recorded, current) {
   const sources = new Map((recorded.upstream.contractSources ?? []).map((entry) => [entry.source, entry.sha256]));
   differences.contractSources = current.contractSources
     .filter((entry) => sources.get(entry.source) !== entry.sha256)
-    .map((entry) => entry.source);
+    .map((entry) => `${entry.sha256 === null ? "removed" : sources.has(entry.source) ? "changed" : "added"}: ${entry.source}`);
 
   const files = new Map((recorded.upstream.files ?? []).map((entry) => [entry.path, entry]));
   for (const file of current.files) {
@@ -411,8 +438,7 @@ function write(current) {
   writeFileSync(upstreamFile, `${JSON.stringify(upstream, null, 2)}\n`);
 }
 
-function main() {
-  const options = parseArgs(process.argv.slice(2));
+function main(options) {
   const current = readUpstream(options.from);
   const recorded = readRecorded();
   const differences = compare(recorded, current);
@@ -437,15 +463,33 @@ function main() {
         "Port the change to packages/contracts/src/manifest.ts with a test, then re-run with --accept.",
     );
   }
+  const removed = current.contractSources.filter((entry) => entry.sha256 === null).map((entry) => entry.source);
+  if (removed.length > 0) {
+    throw new SyncError(
+      `ClarkCant no longer has ${removed.join(", ")}; nothing was written. Find where that contract moved, port any ` +
+        "change to packages/contracts/src/manifest.ts, and update CONTRACT_SOURCES in this script.",
+    );
+  }
   write(current);
   console.info(`synced ${current.files.length} manifests and ${current.cases.length} hostile cases from ${current.repository}@${current.commit}`);
   if (hasDrift(differences)) console.info(summary);
   console.info("next: pnpm contract:check");
 }
 
+let options = null;
 try {
-  main();
+  options = parseArgs(process.argv.slice(2));
+  main(options);
 } catch (error) {
-  console.error(`sync-clarkcant-fixtures: ${error instanceof SyncError ? error.message : (error?.stack ?? String(error))}`);
+  const message = error instanceof SyncError ? error.message : (error?.stack ?? String(error));
+  console.error(`sync-clarkcant-fixtures: ${message}`);
   process.exitCode = 1;
+  // A check that cannot run is drift too (a moved reader, a renamed export, a crash): the report still says why, so
+  // the scheduled workflow can open its tracking issue.
+  if (options?.check && options.report) {
+    writeFileSync(
+      options.report,
+      `The check could not run against ${options.from}; ClarkCant's contract may have moved.\n\n\`\`\`\n${message}\n\`\`\`\n`,
+    );
+  }
 }

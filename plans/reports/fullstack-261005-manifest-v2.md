@@ -30,11 +30,13 @@ Upstream is pinned at `digitopvn/clarkcant@4368e5ed3631645424cc74d0d76aceaf00dca
 
 - `fixtures/upstream/clarkcant/` holds 22 shipped manifests (5 reference apps, 2 themes, 14 e2e fixtures including v1
   widgets, and the `clark widget init --template blank` output), each with ClarkCant's verdict.
-- `verdicts.json` holds 1187 hostile variants (197 accepted and 990 rejected by ClarkCant's real `parseManifest`).
+- `verdicts.json` holds 2039 hostile variants (471 accepted and 1568 rejected by ClarkCant's real `parseManifest`).
 - `pnpm contract:check` replays all of them against the mirror. `pnpm contract:sync` refuses to overwrite when a
-  contract source hash or verdict changed unless `--accept` is passed, and `--check` compares without writing.
-- `.github/workflows/upstream-contract.yml` runs that check against ClarkCant `main` weekly and on demand, and opens
-  or updates one tracking issue on drift.
+  contract source hash or verdict changed, or a contract source is gone, unless `--accept` is passed. `--check`
+  compares without writing and still writes its report when it cannot run.
+- `.github/workflows/upstream-contract.yml` runs that check against ClarkCant `main` weekly and on demand, from the
+  default branch only, and opens or updates one tracking issue on drift or when the check cannot run. No checkout
+  keeps the job token.
 
 ## Acceptance criteria
 
@@ -55,12 +57,13 @@ Upstream is pinned at `digitopvn/clarkcant@4368e5ed3631645424cc74d0d76aceaf00dca
 - `pnpm verify` exits 0:
   - lint: 0 errors, plus 1 warning in the generated SDK that was already there;
   - typecheck: clean;
-  - tests: 395 passed and 3 skipped across 44 files.
+  - tests: 397 passed and 3 skipped across 44 files.
 - `pnpm contract:check`: 25 of 25 passed. Temporarily disabling the cross-field rules made the corpus test report 68
   disagreements, so the corpus detects drift.
 - `pnpm contract:sync --from <clone> --check` against the pin and against ClarkCant `main` (both 4368e5ed): no drift.
-  A tampered contract hash made the sync exit 1 without writing.
-- `pnpm migrations:check`: schema and migrations in sync.
+  A tampered contract hash made the sync exit 1 without writing. A check against a missing checkout exits 1 and
+  still writes its report with the reason.
+- `pnpm migrations:check`: schema and migrations in sync; no migration files differ from `origin/dev`.
 - `pnpm build`: exits 0.
 - Screenshots of the permissions panel at 1440, 768 and 375 px for connected-app, image-generator and media-render
   are in `plans/reports/screenshots-261005-manifest-v2/`. They were checked and show no horizontal overflow. They are

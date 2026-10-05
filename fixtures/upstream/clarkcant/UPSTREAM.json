@@ -138,8 +138,8 @@
   ],
   "verdicts": {
     "path": "verdicts.json",
-    "sha256": "387db889a8671727ddc8de2b671204d849aa70d9d0d86ab415842291adcb0a3b",
-    "cases": 1187
+    "sha256": "f847829dd8a3a28625d98ff7d1eff0cd4337aebff455fa104266b2eddfbaf34b",
+    "cases": 2039
   },
   "contractSources": [
     {

@@ -2,8 +2,8 @@ name: Upstream ClarkCant contract
 
 # Compares ClarkCant's main branch with the manifest contract the marketplace is pinned to
 # (fixtures/upstream/clarkcant/UPSTREAM.json): the contract source hashes, the manifests ClarkCant ships, and ClarkCant's
-# own verdicts on the recorded hostile corpus. It writes nothing; on drift it fails and opens (or comments on) one
-# tracking issue. Refresh the pin as described in docs/extending-indexers.md.
+# own verdicts on the recorded hostile corpus. It writes nothing; on drift, or when the check cannot run, it fails and
+# opens (or comments on) one tracking issue. Refresh the pin as described in docs/extending-indexers.md.
 
 on:
   schedule:
@@ -27,7 +27,10 @@ jobs:
       UPSTREAM_DIR: .upstream/clarkcant
       REPORT: .upstream/drift-report.md
     steps:
+      # ClarkCant's code runs in this job, so no checkout keeps the job token in .git/config.
       - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
 
       - uses: actions/checkout@v5
         with:
@@ -53,11 +56,10 @@ jobs:
         id: compare
         run: node scripts/sync-clarkcant-fixtures.mjs --from "$UPSTREAM_DIR" --check --report "$REPORT"
 
-      - name: Open or update the tracking issue
-        if: failure() && steps.compare.outcome == 'failure' && hashFiles('.upstream/drift-report.md') != ''
+      # The script writes the report whenever it started, including when it could not finish (a moved reader, a crash).
+      - name: Describe the drift
+        if: failure() && hashFiles('.upstream/drift-report.md') != ''
         env:
-          GH_TOKEN: ${{ github.token }}
-          TITLE: "ClarkCant's manifest contract moved away from the marketplace's pin"
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           {
@@ -73,6 +75,27 @@ jobs:
             echo "\`pnpm contract:sync --from <ClarkCant checkout> --accept\` and \`pnpm verify\`"
             echo "(docs/extending-indexers.md)."
           } > "$RUNNER_TEMP/issue-body.md"
+
+      # No report: the comparison never started (the checkout, Node setup or install of ClarkCant's main failed).
+      - name: Describe why the check could not run
+        if: failure() && hashFiles('.upstream/drift-report.md') == ''
+        env:
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          {
+            echo "The scheduled upstream-contract check could not run against ClarkCant's main branch, so the"
+            echo "marketplace's manifest mirror was not compared with it. A failed checkout, Node setup or dependency"
+            echo "install of ClarkCant can mean its contract moved; the run log says which step failed."
+            echo
+            echo "Run: $RUN_URL"
+          } > "$RUNNER_TEMP/issue-body.md"
+
+      - name: Open or update the tracking issue
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TITLE: "ClarkCant's manifest contract moved away from the marketplace's pin"
+        run: |
           number="$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --search "in:title \"$TITLE\"" --json number,title \
             --jq "map(select(.title == env.TITLE)) | first | .number // empty")"
           if [ -n "$number" ]; then

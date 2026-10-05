@@ -98,9 +98,12 @@ size of `verdicts.json`, and the sha256 of the ClarkCant contract sources the mi
   `npm pack` and indexes it through the real pipeline against D1.
 - The **Upstream ClarkCant contract** workflow (`.github/workflows/upstream-contract.yml`) runs weekly and on demand.
   It checks out ClarkCant's `main`, runs the sync in check mode (`--check`, which writes nothing) and fails when a
-  contract source hash, a shipped manifest or any verdict differs from the pin. It then opens one issue titled
-  "ClarkCant's manifest contract moved away from the marketplace's pin", or comments on it if it is already open,
-  with the drift report.
+  contract source hash, a shipped manifest or any verdict differs from the pin, or when a contract source is gone. It
+  then opens one issue titled "ClarkCant's manifest contract moved away from the marketplace's pin", or comments on it
+  if it is already open, with the drift report. When the check cannot run at all (ClarkCant's checkout or install
+  fails, its reader moved, the script crashes) it reports that on the same issue. GitHub runs scheduled workflows only
+  from the repository's default branch, and offers the manual trigger only for workflows present there, so the check
+  runs only once this file is on the default branch.
 
 To refresh, with a clean ClarkCant checkout at the commit to pin and its dependencies installed (`pnpm install`):
 
