@@ -50,7 +50,7 @@ Read tools (everyone):
 | `search_widgets` | Full-text search with `category`, `kind`, `isolation`, `platform`, `limit` and `cursor` filters |
 | `get_widget` | Package details: latest version, facets, permissions, previews and security checks |
 | `get_widget_versions` | Indexed versions |
-| `get_widget_permissions` | The latest version's permissions and facets. Informational only; nothing is granted |
+| `get_widget_permissions` | The latest version's permissions, facets, services (capabilities, egress, connection), browser tokens and resource request. Informational only; nothing is granted |
 | `find_similar_widgets` | Packages sharing keywords, category or facet kind, with the reasons |
 | `list_featured_widgets` | Curator-featured packages |
 

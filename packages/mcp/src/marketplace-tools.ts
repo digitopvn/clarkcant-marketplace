@@ -123,7 +123,8 @@ export const USER_TOOLS: readonly MarketplaceTool[] = [
     name: "get_widget_permissions",
     title: "Inspect widget permissions",
     description:
-      "Permissions the latest version declares (capabilities, network, filesystem, devices) and its facets. " +
+      "Permissions the latest version declares (capabilities, network, filesystem, devices, service egress, secrets, " +
+      "account scopes, resources), its facets, and each service's capabilities with their effects and purposes. " +
       "Informational: ClarkCant asks the user to grant permissions at install time; nothing here grants them.",
     inputSchema: z.object({ name: packageName }),
     readOnly: true,
@@ -135,6 +136,9 @@ export const USER_TOOLS: readonly MarketplaceTool[] = [
         version: detail.latest.version,
         permissions: detail.latest.permissions,
         facets: detail.latest.facets,
+        services: detail.latest.services,
+        browserTokens: detail.latest.browserTokens,
+        resources: detail.latest.resources,
       };
     },
   }),

@@ -2,7 +2,7 @@ import { MarketplaceError } from "@marketplace/contracts";
 import { describe, expect, it } from "vitest";
 
 import { MAX_DOCUMENT_BYTES, PageOperationError, applyPageOperations, parsePageDocument, registryBlockDefaults, validatePageDocument } from "../src";
-import { escapeMarkdown } from "../src/markdown-text";
+import { escapeMarkdown, mdInlineCode } from "../src/markdown-text";
 import { documentWith } from "./support";
 
 const hero = { id: "hero", type: "hero", version: 1, props: { title: "Hello" } };
@@ -115,6 +115,29 @@ describe("markdown escaping", () => {
     expect(escapeMarkdown("# not a heading")).toBe("\\# not a heading");
     expect(escapeMarkdown("- not a list")).toBe("\\- not a list");
     expect(escapeMarkdown(["two", "lines"].join(String.fromCharCode(10)))).toBe("two lines");
+  });
+
+  it("treats CRLF, a lone LF and a lone CR alike as line breaks", () => {
+    const [cr, lf] = [String.fromCharCode(13), String.fromCharCode(10)];
+    expect(escapeMarkdown(`a${cr}${lf}b${cr}# c${lf}d`)).toBe("a b # c d");
+    expect(escapeMarkdown(`${cr}# heading`)).toBe(" \\# heading");
+    expect(mdInlineCode(`a${cr}${lf}b${cr}c${lf}d`)).toBe("`a b c d`");
+  });
+
+  it("fences inline code so the value cannot close the span", () => {
+    expect(mdInlineCode("tasks.write")).toBe("`tasks.write`");
+    expect(mdInlineCode("a`b")).toBe("``a`b``");
+    expect(mdInlineCode("x``[l](u)`")).toBe("``` x``[l](u)` ```");
+    expect(mdInlineCode(" padded")).toBe("`  padded `");
+    expect(mdInlineCode(["two", "lines"].join(String.fromCharCode(10)))).toBe("`two lines`");
+  });
+
+  it("keeps empty and all-space values as a well-formed span", () => {
+    // An empty pair of backticks would be literal text that a later backtick on the line could pair with.
+    expect(mdInlineCode("")).toBe("` `");
+    // CommonMark strips no space from a span of only spaces, so padding would change the value.
+    expect(mdInlineCode("   ")).toBe("`   `");
+    expect(mdInlineCode("`")).toBe("`` ` ``");
   });
 
   it("rejects block props that are not in the block's schema", () => {

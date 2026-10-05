@@ -99,7 +99,8 @@ export function packagePageTools(options: PackagePageToolOptions): WebMcpTool[] 
         name: "inspect_permissions",
         title: "Inspect permissions",
         description:
-          "Permissions the latest version declares and its facets. ClarkCant asks the user to grant them at install " +
+          "Permissions the latest version declares, its facets, and what each service provides and reaches. " +
+          "ClarkCant asks the user to grant them at install " +
           "time; nothing here grants anything.",
         inputSchema: NO_INPUT,
         annotations: { readOnlyHint: true },
@@ -111,6 +112,9 @@ export function packagePageTools(options: PackagePageToolOptions): WebMcpTool[] 
           version: detail.latest?.version ?? null,
           permissions: detail.latest?.permissions ?? [],
           facets: detail.latest?.facets ?? [],
+          services: detail.latest?.services ?? [],
+          browserTokens: detail.latest?.browserTokens ?? [],
+          resources: detail.latest?.resources ?? null,
         };
       },
     ),

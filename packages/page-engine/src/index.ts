@@ -43,7 +43,7 @@ export {
 export { BLOCK_STYLES } from "./block-styles";
 export { absoluteUrl, escapeHtml, isSafeUrl, jsonForScript, packagePath, safeHref } from "./html";
 // Markdown text helpers, shared with the catalogue Markdown twins and llms.txt so escaping rules stay identical.
-export { escapeMarkdown, joinMarkdown, mdCode, mdHeading, mdLink } from "./markdown-text";
+export { escapeMarkdown, joinMarkdown, mdCode, mdHeading, mdInlineCode, mdLink } from "./markdown-text";
 
 import { getBlock, getLatestBlock } from "./registry";
 import type { OperationContext } from "./operations";

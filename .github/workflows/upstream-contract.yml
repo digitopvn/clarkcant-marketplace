@@ -1,0 +1,105 @@
+name: Upstream ClarkCant contract
+
+# Compares ClarkCant's main branch with the manifest contract the marketplace is pinned to
+# (fixtures/upstream/clarkcant/UPSTREAM.json): the contract source hashes, the manifests ClarkCant ships, and ClarkCant's
+# own verdicts on the recorded hostile corpus. It writes nothing; on drift, or when the check cannot run, it fails and
+# opens (or comments on) one tracking issue. Refresh the pin as described in docs/extending-indexers.md.
+
+on:
+  schedule:
+    - cron: "17 2 * * 1"
+  workflow_dispatch:
+
+concurrency:
+  group: upstream-contract
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  check:
+    name: Compare with digitopvn/clarkcant main
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      UPSTREAM_DIR: .upstream/clarkcant
+      REPORT: .upstream/drift-report.md
+    steps:
+      # ClarkCant's code runs in this job, so no checkout keeps the job token in .git/config.
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+
+      - uses: actions/checkout@v5
+        with:
+          repository: digitopvn/clarkcant
+          ref: main
+          path: .upstream/clarkcant
+          persist-credentials: false
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: .nvmrc
+
+      # ClarkCant's CLI and manifest reader run from its checkout, with the pnpm version its package.json pins.
+      - name: Install ClarkCant's dependencies
+        working-directory: .upstream/clarkcant
+        env:
+          ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
+          COREPACK_ENABLE_DOWNLOAD_PROMPT: "0"
+        run: corepack pnpm install --frozen-lockfile --ignore-scripts
+
+      - name: Compare with the pin
+        id: compare
+        run: node scripts/sync-clarkcant-fixtures.mjs --from "$UPSTREAM_DIR" --check --report "$REPORT"
+
+      # The script writes the report whenever it started, including when it could not finish (a moved reader, a crash).
+      - name: Describe the drift
+        if: failure() && hashFiles('.upstream/drift-report.md') != ''
+        env:
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          {
+            echo "The scheduled upstream-contract check found that ClarkCant's main branch no longer matches"
+            echo "\`fixtures/upstream/clarkcant/UPSTREAM.json\`. Until the mirror is updated, the marketplace may list"
+            echo "manifests ClarkCant refuses, or refuse manifests ClarkCant reads."
+            echo
+            cat "$REPORT"
+            echo
+            echo "Run: $RUN_URL"
+            echo
+            echo "To fix: port the change to \`packages/contracts/src/manifest.ts\` with a test, then run"
+            echo "\`pnpm contract:sync --from <ClarkCant checkout> --accept\` and \`pnpm verify\`"
+            echo "(docs/extending-indexers.md)."
+          } > "$RUNNER_TEMP/issue-body.md"
+
+      # No report: the comparison never started (the checkout, Node setup or install of ClarkCant's main failed).
+      - name: Describe why the check could not run
+        if: failure() && hashFiles('.upstream/drift-report.md') == ''
+        env:
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          {
+            echo "The scheduled upstream-contract check could not run against ClarkCant's main branch, so the"
+            echo "marketplace's manifest mirror was not compared with it. A failed checkout, Node setup or dependency"
+            echo "install of ClarkCant can mean its contract moved; the run log says which step failed."
+            echo
+            echo "Run: $RUN_URL"
+          } > "$RUNNER_TEMP/issue-body.md"
+
+      - name: Open or update the tracking issue
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TITLE: "ClarkCant's manifest contract moved away from the marketplace's pin"
+        run: |
+          number="$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --search "in:title \"$TITLE\"" --json number,title \
+            --jq "map(select(.title == env.TITLE)) | first | .number // empty")"
+          if [ -n "$number" ]; then
+            gh issue comment "$number" --repo "$GITHUB_REPOSITORY" --body-file "$RUNNER_TEMP/issue-body.md"
+          else
+            gh issue create --repo "$GITHUB_REPOSITORY" --title "$TITLE" --body-file "$RUNNER_TEMP/issue-body.md"
+          fi

@@ -1,7 +1,6 @@
 import {
   MarketplaceError,
-  clarkcantManifestSchema,
-  normalizeManifest,
+  normalizeStoredManifest,
   type AuditActor,
   type CurationStatus,
   type NormalizedManifest,
@@ -22,12 +21,13 @@ import { MediaRejectedError, storeGeneratedMedia, storeUntrustedImage, type Medi
 import { and, eq, isNull, sql } from "drizzle-orm";
 
 import { prepareAuditEvent } from "../audit/audit-writer";
+import { D1_MAX_BOUND_PARAMETERS, chunked } from "../d1-limits";
 import { isConstraintViolation } from "../db-errors";
 import type { MarketplaceDeps } from "../deps";
 import { syncPackageSearchDocument } from "../search/search-index";
 import { isIndexingRejection, rejectionErrorText, type IndexingRejectionCode } from "./indexing-errors";
 import { verifyTarballIntegrity } from "./integrity";
-import { permissionRows, validateManifest } from "./manifest-validation";
+import { validateManifest } from "./manifest-validation";
 import { createNpmRegistry, resolveVersion, type NpmRegistry, type ResolvedVersion } from "./npm-registry";
 import { MAX_README_BYTES, readPackageArchive, type PackageArchive } from "./package-archive";
 import { isNewerSemver } from "./semver-order";
@@ -223,22 +223,20 @@ async function ingestVersion(deps: MarketplaceDeps, registry: NpmRegistry, resol
       indexedAt: now,
     }),
   );
-  for (const facet of normalized.facets) {
-    statements.push(
-      deps.db.insert(packageFacets).values({
-        id: deps.ids("pf"),
-        packageVersionId: versionId,
-        kind: facet.kind,
-        isolation: facet.isolation,
-        renderer: facet.renderer,
-        entry: facet.entry,
-        widgetId: facet.widgetId,
-      }),
-    );
-  }
-  for (const permission of permissionRows(normalized)) {
-    statements.push(deps.db.insert(packagePermissions).values({ id: deps.ids("pp"), packageVersionId: versionId, ...permission }));
-  }
+  // Facets and permissions go in as multi-row inserts sized to D1's bound-parameter limit, so even the largest
+  // manifest stays a small batch.
+  const facetRows = normalized.facets.map((facet) => ({
+    id: deps.ids("pf"),
+    packageVersionId: versionId,
+    kind: facet.kind,
+    isolation: facet.isolation,
+    renderer: facet.renderer,
+    entry: facet.entry,
+    widgetId: facet.widgetId,
+  }));
+  for (const rows of insertChunks(facetRows)) statements.push(deps.db.insert(packageFacets).values(rows));
+  const permissionValues = manifest.permissions.map((permission) => ({ id: deps.ids("pp"), packageVersionId: versionId, ...permission }));
+  for (const rows of insertChunks(permissionValues)) statements.push(deps.db.insert(packagePermissions).values(rows));
   storedPreviews.forEach((preview, position) => {
     statements.push(
       deps.db.insert(packagePreviews).values({
@@ -262,6 +260,15 @@ async function ingestVersion(deps: MarketplaceDeps, registry: NpmRegistry, resol
   if (!first) throw new Error("unreachable: a version insert is always present");
   await deps.db.batch([first, ...rest]);
   return { packageId, versionId, created: true };
+}
+
+/**
+ * Splits rows into groups that fit one multi-row insert: every column of a row is one bound parameter. Rows of one
+ * table share their keys, so the first row's width holds for all.
+ */
+function insertChunks<T extends object>(rows: readonly T[]): T[][] {
+  const width = rows[0] ? Object.keys(rows[0]).length : 1;
+  return chunked(rows, Math.max(1, Math.floor(D1_MAX_BOUND_PARAMETERS / width)));
 }
 
 interface CheckRow {
@@ -358,13 +365,15 @@ async function ensureSocialCard(deps: MarketplaceDeps, versionId: string): Promi
     .where(eq(packageVersions.id, versionId))
     .limit(1);
   if (!row) throw new Error(`package version ${versionId} disappeared before its social card was made`);
-  const manifest = normalizeManifest(clarkcantManifestSchema.parse(row.manifest));
+  // The stored manifest is read tolerantly: a version stored under an older reader must still get its card.
+  const manifest = normalizeStoredManifest(row.manifest);
+  const displayName = manifest?.displayName ?? row.name;
   const svg = renderSocialCardSvg({
     name: row.name,
-    displayName: manifest.displayName ?? row.name,
-    description: manifest.description ?? "",
+    displayName,
+    description: manifest?.description ?? "",
     version: row.version,
-    isolation: manifest.facets.map((facet) => facet.isolation),
+    isolation: manifest?.facets.map((facet) => facet.isolation) ?? [],
   });
   const record = await storeGeneratedMedia(mediaDeps(deps), new TextEncoder().encode(svg), {
     contentType: "image/svg+xml",
@@ -376,7 +385,7 @@ async function ensureSocialCard(deps: MarketplaceDeps, versionId: string): Promi
     packageVersionId: versionId,
     kind: "social_card",
     mediaId: record.id,
-    alt: `${manifest.displayName ?? row.name} ${row.version} social card`,
+    alt: `${displayName} ${row.version} social card`,
     position: 1000,
   });
 }
@@ -407,15 +416,16 @@ async function finalize(
       .from(packageVersions)
       .where(eq(packageVersions.id, ingested.versionId))
       .limit(1);
-    const manifest = normalizeManifest(clarkcantManifestSchema.parse(version?.manifest));
+    // Tolerant, like the social card: a version stored under an older reader still finalizes, from npm's metadata.
+    const manifest = normalizeStoredManifest(version?.manifest);
     Object.assign(listing, {
       latestVersion: resolved.version,
-      displayName: manifest.displayName ?? resolved.name,
-      description: manifest.description ?? resolved.description ?? "",
+      displayName: manifest?.displayName ?? resolved.name,
+      description: manifest?.description ?? resolved.description ?? "",
       keywords: resolved.keywords,
       homepage: resolved.homepage,
       repositoryUrl: resolved.repositoryUrl,
-      license: manifest.publisher?.license ?? resolved.license,
+      license: manifest?.publisher?.license ?? resolved.license,
     });
   }
 

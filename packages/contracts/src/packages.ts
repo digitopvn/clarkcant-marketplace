@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { isolationClassSchema } from "./manifest";
+import { effectCategorySchema, isolationClassSchema, resourceProfileNameSchema } from "./manifest";
 import { MAX_PAGE_SIZE, DEFAULT_PAGE_SIZE } from "./pagination";
 
 /** npm package name rules (lowercase, optional scope, URL-safe, ≤214 chars). */
@@ -54,10 +54,104 @@ export const packageFacetSchema = z.object({
   widgetId: z.string().nullable(),
 });
 
+/**
+ * Kinds of permission rows: one fact a manifest requests, flattened for listing and search.
+ *
+ * | kind | value | access |
+ * | --- | --- | --- |
+ * | `capability` | host capability ref | null |
+ * | `network` | origin a widget may reach | null |
+ * | `filesystem` | package-relative path | `read`, `write` (null on rows indexed before v1 paths were read as `read`) |
+ * | `microphone`, `camera` | the device | null |
+ * | `lifecycle` | install or update script | null |
+ * | `service-capability` | capability ref a service provides | its effect category |
+ * | `egress` | origin a service reaches through the host | secret the host adds, or null |
+ * | `secret` | secret a person provides for the service | null |
+ * | `connection-scope` | account scope the connection asks for | provider id |
+ * | `connection-endpoint` | origin the host sends the account credential to | provider id |
+ * | `browser-token` | provider a widget asks a scoped token from | its scopes, space-separated |
+ * | `resource-profile` | resource profile asked for | `gpu` when a GPU is asked for, else null |
+ */
+export const PACKAGE_PERMISSION_KINDS = [
+  "capability",
+  "network",
+  "filesystem",
+  "microphone",
+  "camera",
+  "lifecycle",
+  "service-capability",
+  "egress",
+  "secret",
+  "connection-scope",
+  "connection-endpoint",
+  "browser-token",
+  "resource-profile",
+] as const;
+export const packagePermissionKindSchema = z.enum(PACKAGE_PERMISSION_KINDS);
+export type PackagePermissionKind = z.infer<typeof packagePermissionKindSchema>;
+
 export const packagePermissionSchema = z.object({
-  kind: z.enum(["capability", "network", "filesystem", "microphone", "camera", "lifecycle"]),
+  kind: packagePermissionKindSchema,
   value: z.string(),
   access: z.string().nullable(),
+});
+
+export const packageServiceCapabilitySchema = z.object({
+  /** Name the service answers to on its own protocol. */
+  tool: z.string(),
+  /** Capability ref it becomes, under the package's own id. */
+  ref: z.string(),
+  summary: z.string(),
+  effectCategory: effectCategorySchema,
+  /** True when the capability runs as a job the widget can follow and stop. */
+  job: z.boolean(),
+  /** Connection scopes the capability needs. */
+  requiredScopes: z.array(z.string()),
+  /** Arguments that carry ids of files a widget holds, which the host lets the service read for that call. */
+  inputArtifactFields: z.array(z.string()),
+});
+
+/** A service facet as declared: what it provides and what it reaches through the host. Requests, never grants. */
+export const packageServiceSchema = z.object({
+  facetId: z.string(),
+  entry: z.string(),
+  protocol: z.string(),
+  capabilities: z.array(packageServiceCapabilitySchema),
+  egress: z
+    .object({
+      /** Secrets a person types into ClarkCant; the service never sees their values. */
+      secrets: z.array(z.object({ name: z.string(), purpose: z.string() })),
+      origins: z.array(
+        z.object({
+          origin: z.string(),
+          purpose: z.string(),
+          credential: z.object({ secret: z.string(), header: z.string(), scheme: z.enum(["bearer", "raw"]) }).nullable(),
+        }),
+      ),
+    })
+    .nullable(),
+  connection: z
+    .object({
+      provider: z.string(),
+      displayName: z.string(),
+      flow: z.literal("oauth-pkce"),
+      authorizationEndpoint: z.string(),
+      tokenEndpoint: z.string(),
+      revocationEndpoint: z.string().nullable(),
+      scopes: z.array(z.object({ scope: z.string(), purpose: z.string() })),
+      /** Origins the host sends the account credential to. */
+      endpoints: z.array(z.string()),
+      probeUrl: z.string(),
+    })
+    .nullable(),
+});
+export type PackageService = z.infer<typeof packageServiceSchema>;
+
+export const packageBrowserTokenSchema = z.object({
+  facetId: z.string(),
+  provider: z.string(),
+  scopes: z.array(z.string()),
+  purpose: z.string(),
 });
 
 export const packagePreviewSchema = z.object({
@@ -90,8 +184,16 @@ export const packageVersionDetailSchema = z.object({
   readmeHtml: z.string().nullable(),
   /** Platforms the manifest declares (`web`, `darwin-arm64`, …). */
   platforms: z.array(z.string()),
+  /** Manifest format the version shipped: 2 (current), 1 (widget-only) or null (the schemaVersion-less draft). */
+  manifestSchemaVersion: z.union([z.literal(1), z.literal(2)]).nullable(),
   facets: z.array(packageFacetSchema),
   permissions: z.array(packagePermissionSchema),
+  /** Service facets with their declared capabilities, egress and account connection. */
+  services: z.array(packageServiceSchema),
+  /** Scoped provider tokens UI facets ask the host for. */
+  browserTokens: z.array(packageBrowserTokenSchema),
+  /** Resource profile requested; null means none was (ClarkCant runs it with its default profile). */
+  resources: z.object({ profile: resourceProfileNameSchema, gpu: z.boolean() }).nullable(),
   previews: z.array(packagePreviewSchema),
   /** Automated facts recorded at index time. Distinct from curation: a passing check is not a review. */
   securityChecks: z.array(packageSecurityCheckSchema),
