@@ -39,9 +39,12 @@ jobs:
           path: .upstream/clarkcant
           persist-credentials: false
 
+      # The comparison script uses Node built-ins only, so the marketplace's pnpm is not installed here. setup-node v5
+      # would otherwise detect `packageManager` and fail looking for pnpm to cache.
       - uses: actions/setup-node@v5
         with:
           node-version-file: .nvmrc
+          package-manager-cache: false
 
       # ClarkCant's CLI and manifest reader run from its checkout, with the pnpm version its package.json pins.
       - name: Install ClarkCant's dependencies
