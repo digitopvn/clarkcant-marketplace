@@ -10,6 +10,7 @@ import {
   serializeConsent,
 } from "../src/components/consent/consent";
 import { THEME_SCRIPT } from "../src/components/theme-script";
+import { optOutOfEdgeTransforms, preferredEncoding, withNoTransform } from "../src/middleware/edge-transform-opt-out";
 import { rateLimitBucket, rateLimitKey, rateLimitedResponse } from "../src/middleware/rate-limit";
 import { resolveRequestId } from "../src/middleware/request-log";
 import { mergeCsp, securityHeadersFor, withHeaders } from "../src/middleware/security-headers";
@@ -56,6 +57,46 @@ describe("security headers", () => {
     const redirect = withHeaders(Response.redirect("https://market.example/", 302), { "x-content-type-options": "nosniff" });
     expect(redirect.status).toBe(302);
     expect(redirect.headers.get("x-content-type-options")).toBe("nosniff");
+  });
+});
+
+describe("edge transform opt-out", () => {
+  it("adds no-transform to an HTML page's Cache-Control and keeps the route's directives", () => {
+    expect(withNoTransform(null)).toBe("no-transform");
+    expect(withNoTransform("private, no-store")).toBe("private, no-store, no-transform");
+    expect(withNoTransform("public, No-Transform")).toBe("public, No-Transform");
+  });
+
+  it("prefers brotli, then gzip, and honours q=0", () => {
+    expect(preferredEncoding("gzip, deflate, br, zstd")).toBe("br");
+    expect(preferredEncoding("br;q=0, gzip;q=0.8")).toBe("gzip");
+    expect(preferredEncoding("identity")).toBeNull();
+    expect(preferredEncoding(null)).toBeNull();
+  });
+
+  it("marks HTML no-transform and has the runtime compress it, leaving other responses alone", () => {
+    const page = optOutOfEdgeTransforms(
+      new Response("<p>hi</p>", { headers: { "content-type": html, "content-length": "9", vary: "Cookie" } }),
+      "br",
+    );
+    expect(page.headers.get("cache-control")).toBe("no-transform");
+    expect(page.headers.get("content-encoding")).toBe("br");
+    expect(page.headers.get("content-length")).toBeNull();
+    expect(page.headers.get("vary")).toBe("Cookie, Accept-Encoding");
+
+    const uncompressed = optOutOfEdgeTransforms(new Response("<p>hi</p>", { headers: { "content-type": html } }), null);
+    expect(uncompressed.headers.get("cache-control")).toBe("no-transform");
+    expect(uncompressed.headers.get("content-encoding")).toBeNull();
+
+    const preEncoded = optOutOfEdgeTransforms(
+      new Response("x", { headers: { "content-type": html, "content-encoding": "gzip" } }),
+      "br",
+    );
+    expect(preEncoded.headers.get("content-encoding")).toBe("gzip");
+
+    const json = optOutOfEdgeTransforms(Response.json({ ok: true }), "br");
+    expect(json.headers.get("cache-control")).toBeNull();
+    expect(json.headers.get("content-encoding")).toBeNull();
   });
 });
 

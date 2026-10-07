@@ -26,8 +26,9 @@ const INLINE_SCRIPT_HASHES = [sha256(THEME_SCRIPT), sha256(CANVAS_SCRIPT)];
 const INLINE_STYLE_HASHES = [sha256(BLOCK_STYLES), sha256(canvasStyle(`${TOKENS_CSS}\n${BLOCK_STYLES}`))];
 
 // Cloudflare Web Analytics is the only third-party script origin: the site itself adds the beacon, and only after the
-// visitor opts in to analytics (components/consent/analytics.ts; zone auto-injection must stay off). The beacon is
-// loaded from CF_BEACON_ORIGIN and reports to CF_REPORT_ORIGIN.
+// visitor opts in to analytics (components/consent/analytics.ts). HTML pages refuse zone auto-injection with
+// `no-transform` (middleware/edge-transform-opt-out.ts). The beacon is loaded from CF_BEACON_ORIGIN and reports to
+// CF_REPORT_ORIGIN.
 
 // Server-rendered on Cloudflare Workers. The target environment (top-level dev, `staging`, `production`) is chosen
 // at build time with CLOUDFLARE_ENV, which selects the matching block of wrangler.jsonc.
