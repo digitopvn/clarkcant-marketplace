@@ -1,6 +1,7 @@
 export * from "./accounts";
 export * from "./actor";
 export * from "./audit";
+export * from "./directory";
 export * from "./env";
 export * from "./errors";
 export * from "./idempotency";

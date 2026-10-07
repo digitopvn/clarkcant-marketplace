@@ -13,6 +13,7 @@ import {
   packagePermissions,
   packagePreviews,
   packageSubmissions,
+  packageVersionArtifacts,
   packageVersions,
   packages,
 } from "@marketplace/db";
@@ -24,6 +25,7 @@ import { prepareAuditEvent } from "../audit/audit-writer";
 import { D1_MAX_BOUND_PARAMETERS, chunked } from "../d1-limits";
 import { isConstraintViolation } from "../db-errors";
 import type { MarketplaceDeps } from "../deps";
+import { ensureVersionArtifact, measureVersionArtifact } from "../directory/version-artifacts";
 import { syncPackageSearchDocument } from "../search/search-index";
 import { isIndexingRejection, rejectionErrorText, type IndexingRejectionCode } from "./indexing-errors";
 import { verifyTarballIntegrity } from "./integrity";
@@ -150,18 +152,29 @@ async function ingestVersion(deps: MarketplaceDeps, registry: NpmRegistry, resol
     .limit(1);
   if (existingPackage) {
     const [existingVersion] = await deps.db
-      .select({ id: packageVersions.id })
+      .select({ id: packageVersions.id, npmIntegrity: packageVersions.npmIntegrity, manifest: packageVersions.manifest })
       .from(packageVersions)
       .where(and(eq(packageVersions.packageId, existingPackage.id), eq(packageVersions.version, resolved.version)))
       .limit(1);
-    // Versions are immutable facts: an already indexed version is never downloaded or rewritten again.
-    if (existingVersion) return { packageId: existingPackage.id, versionId: existingVersion.id, created: false };
+    // Versions are immutable facts: an already indexed version is never rewritten. It is downloaded again only when it
+    // was indexed before its archive was measured for ClarkCant's directory, and then only to add that measurement.
+    if (existingVersion) {
+      await ensureVersionArtifact(
+        deps,
+        registry,
+        { ...existingVersion, packageName: resolved.name, version: resolved.version },
+        resolved.tarballUrl,
+      );
+      return { packageId: existingPackage.id, versionId: existingVersion.id, created: false };
+    }
   }
 
   const tarball = await registry.fetchTarball(resolved.tarballUrl);
   const verification = await verifyTarballIntegrity(tarball, resolved.integrity);
   const archive = await readPackageArchive(tarball);
   const manifest = validateManifest(archive.manifestText, resolved.version);
+  const versionId = deps.ids("pv");
+  const artifact = await measureVersionArtifact(deps, versionId, manifest.raw, tarball);
   const { readmeMd, readmeHtml, omitted: readmeOmitted } = renderReadme(
     archive,
     resolved,
@@ -183,7 +196,6 @@ async function ingestVersion(deps: MarketplaceDeps, registry: NpmRegistry, resol
 
   const now = deps.now();
   const packageId = existingPackage?.id ?? deps.ids("pkg");
-  const versionId = deps.ids("pv");
   const normalized = manifest.normalized;
   const displayName = normalized.displayName ?? resolved.name;
 
@@ -223,6 +235,7 @@ async function ingestVersion(deps: MarketplaceDeps, registry: NpmRegistry, resol
       indexedAt: now,
     }),
   );
+  statements.push(deps.db.insert(packageVersionArtifacts).values(artifact));
   // Facets and permissions go in as multi-row inserts sized to D1's bound-parameter limit, so even the largest
   // manifest stays a small batch.
   const facetRows = normalized.facets.map((facet) => ({

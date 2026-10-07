@@ -35,3 +35,13 @@ test("OpenAPI document lists the public routes", async ({ request }) => {
     expect.arrayContaining(["/api/v1/health", "/api/v1/packages", "/api/v1/search", "/api/v1/categories"]),
   );
 });
+
+test("directory feed serves a page ClarkCant can read, cacheable by shared caches", async ({ request }) => {
+  const response = await request.get("/api/v1/directory", { headers: { accept: "application/json" } });
+  expect(response.status()).toBe(200);
+  expect(response.headers()["cache-control"]).toContain("public");
+  const body = (await response.json()) as { format: string; entries: unknown[]; nextCursor: string | null };
+  expect(body.format).toBe("clarkcant-directory@1");
+  expect(Array.isArray(body.entries)).toBe(true);
+  expect(body.nextCursor === null || typeof body.nextCursor === "string").toBe(true);
+});

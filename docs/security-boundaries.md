@@ -22,6 +22,7 @@ the package page. Keep all three in step.
 | `hidden`, `rejected` | Removed from every public surface (pages, API, search, sitemaps, `llms.txt`) | Deleted; the record and audit trail stay |
 | Verified publisher | Proved control of a web domain with a DNS TXT record | Anything about code quality |
 | npm provenance | Recorded when the registry reports it (attestation and signature key ids) | Verified by the marketplace. **Provenance is recorded, not verified.** |
+| Directory entry (`GET /api/v1/directory`) | The marketplace found this npm version, measured its runtime content digest as ClarkCant would, and the package holds its ClarkCant package id ([rules](directory-feed.md#package-id-collisions)) | Permission to install or run it. ClarkCant re-fetches from npm, verifies integrity and the digest, and applies its own policy |
 
 Curation status changes (list, hide, reject, feature) go through the REST API with the `packages:curate` scope
 (admins hold every scope) and are audited; MCP can only feature or unfeature (`feature_package`) and manage
