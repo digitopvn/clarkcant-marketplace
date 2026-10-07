@@ -73,6 +73,8 @@ test.describe("security headers", () => {
     expect(headers["referrer-policy"]).toBe("strict-origin-when-cross-origin");
     expect(headers["permissions-policy"]).toContain("camera=()");
     expect(headers["x-request-id"]).toMatch(/^[A-Za-z0-9._-]{8,128}$/);
+    // Stops edge rewriting, including Cloudflare's zone-level analytics injection, which would run before consent.
+    expect(headers["cache-control"]).toContain("no-transform");
     if (new URL(response.url()).protocol === "https:") expect(headers["strict-transport-security"]).toContain("max-age=");
   });
 

@@ -129,7 +129,9 @@ both off by default and toggled in the banner ("Choose", or "Cookie settings" in
   when the stored choice allows analytics and the environment sets the public `CF_WEB_ANALYTICS_TOKEN` var, rendered
   on the banner as `data-analytics-token`. No token (or a malformed one, logged as `analytics_token_invalid`) means
   nothing loads. Withdrawing consent stops the beacon from the next page; a beacon already running finishes the
-  current page view. Zone-level automatic injection must stay off, or the beacon would run without consent.
+  current page view. Zone-level automatic injection would run the beacon without consent, so HTML pages send
+  `Cache-Control: no-transform`, which Cloudflare's edge honours by not injecting it
+  (`apps/web/src/middleware/edge-transform-opt-out.ts`); keep the zone setting off as well.
 
 There is no advertising. Adding any other non-essential tracking requires a new consent category and cookie version
 first.
