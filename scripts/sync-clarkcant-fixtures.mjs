@@ -12,7 +12,11 @@
 // - verdicts.json: a corpus of hostile variants of those manifests, each with the verdict of ClarkCant's real
 //   `parseManifest`, so `pnpm contract:check` proves the mirror rejects what ClarkCant rejects, not only that it
 //   accepts ClarkCant's examples;
-// - the sha256 of the ClarkCant sources the mirror copies.
+// - the sha256 of the ClarkCant sources the mirror copies;
+// - fixtures/upstream/clarkcant-directory/: ClarkCant's runtime content digest of every archive in its `archives/`
+//   (content-digests.json, from `inspectNpmTarball`), and the directory entry ClarkCant builds for every manifest it
+//   accepts (directory-entries.json, `clark widget publish`'s mapping checked by ClarkCant's `directoryEntrySchema`),
+//   so the marketplace's feed and digest are proven against ClarkCant's code.
 //
 // ClarkCant's code runs from the checkout, so it needs `pnpm install` there. A refresh refuses (exit 1) when a
 // contract source changed or a recorded verdict flipped, unless `--accept` is passed after the mirror was reviewed and
@@ -20,7 +24,7 @@
 // runs it against ClarkCant's main branch.
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -29,6 +33,10 @@ const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const fixturesDir = join(root, "fixtures", "upstream", "clarkcant");
 const upstreamFile = join(fixturesDir, "UPSTREAM.json");
 const verdictsFile = join(fixturesDir, "verdicts.json");
+const directoryDir = join(root, "fixtures", "upstream", "clarkcant-directory");
+const archivesDir = join(directoryDir, "archives");
+const contentDigestsFile = join(directoryDir, "content-digests.json");
+const directoryEntriesFile = join(directoryDir, "directory-entries.json");
 /** Top-level fixture directories this script owns; everything in them is rewritten on refresh. */
 const FIXTURE_DIRS = ["reference-apps", "themes", "e2e", "templates"];
 
@@ -44,7 +52,34 @@ const CONTRACT_SOURCES = [
   "packages/contracts/src/service-artifacts.ts",
   "packages/contracts/src/resource-profiles.ts",
   "packages/core/src/widget-package.ts",
+  // The directory feed: the entry schema, declared reach, the runtime content digest, and `clark widget publish`'s
+  // mapping from a manifest to an entry (only that part of the CLI, so unrelated CLI work is not drift).
+  "packages/contracts/src/directory.ts",
+  "packages/contracts/src/declared-reach.ts",
+  "packages/core/src/package-fetch.ts",
+  "packages/widget-cli/src/cli.ts#directory-entry",
 ];
+/** Contract sources that are one part of a file: from the first marker to the end of the second, inclusive. */
+const SOURCE_EXCERPTS = {
+  "packages/widget-cli/src/cli.ts#directory-entry": {
+    from: "function requestedSummary(",
+    to: "const parsed = directoryEntrySchema.safeParse(entry);",
+  },
+};
+/** ClarkCant's npm fetch path, whose `inspectNpmTarball` computes the runtime content digest. */
+const FETCH_MODULE = "packages/core/src/package-fetch.ts";
+const CONTRACTS_MODULE = "packages/contracts/src/index.ts";
+/**
+ * The listing half of every recorded entry: what the marketplace adds to a manifest. Fixed values, so the entries
+ * differ only by what the manifest decides; `packages/contracts/test/upstream-contract-directory.test.ts` reads them
+ * from directory-entries.json.
+ */
+const ENTRY_LISTING = {
+  npmName: "@clarkcant-fixtures/listed-package",
+  digest: `sha256:${"0".repeat(64)}`,
+  sizeBytes: 4096,
+  preview: { imageUrl: "https://marketplace.clarkcant.cc/media/sha256/00/preview.png" },
+};
 /** ClarkCant's manifest reader: `parseManifest` decides whether ClarkCant reads a package's manifest. */
 const READER_MODULE = "packages/core/src/widget-package.ts";
 /** Working-tree paths whose code runs here (the CLI and the reader); they must match HEAD. */
@@ -171,6 +206,111 @@ function upstreamVerdicts(checkout, inputs) {
   }
 }
 
+/**
+ * Runs ClarkCant's own code for the directory: `inspectNpmTarball` on every archive (the runtime content digest a
+ * fetch computes), and, for every manifest `parseManifest` accepts, the entry `clark widget publish` builds, checked
+ * by `directoryEntrySchema`. The mapping is the CLI's, line for line (its source is a hashed contract excerpt), with
+ * the listing half fixed to {@link ENTRY_LISTING}.
+ */
+function upstreamDirectoryFacts(checkout, archives, manifests) {
+  const tmp = mkdtempSync(join(tmpdir(), "clarkcant-directory-"));
+  try {
+    const evaluator = join(tmp, "evaluate.mjs");
+    writeFileSync(
+      evaluator,
+      [
+        'import { mkdtempSync, rmSync } from "node:fs";',
+        'import { tmpdir } from "node:os";',
+        'import { join } from "node:path";',
+        'import { pathToFileURL } from "node:url";',
+        "const { inspectNpmTarball } = await import(pathToFileURL(process.argv[2]).href);",
+        "const { parseManifest } = await import(pathToFileURL(process.argv[3]).href);",
+        "const contracts = await import(pathToFileURL(process.argv[4]).href);",
+        'let text = "";',
+        "for await (const chunk of process.stdin) text += chunk;",
+        "const input = JSON.parse(text);",
+        "const digests = input.archives.map(({ name, base64 }) => {",
+        '  const scratch = mkdtempSync(join(tmpdir(), "inspect-"));',
+        "  try {",
+        '    const result = inspectNpmTarball(Buffer.from(base64, "base64"), scratch);',
+        "    if (!result.ok) return { archive: name, ok: false, code: result.code };",
+        "    const sizeBytes = result.facts.files.reduce((sum, file) => sum + file.bytes, 0);",
+        "    return { archive: name, ok: true, digest: result.facts.contentDigest, sizeBytes, fileCount: result.facts.files.length };",
+        "  } finally {",
+        "    rmSync(scratch, { recursive: true, force: true });",
+        "  }",
+        "});",
+        // `requestedSummary`, `requestsMoreThanDefault` and the entry literal are `clark widget publish`'s.
+        "function requestedSummary(permissions) {",
+        '  const out = permissions.networkOrigins.map((origin) => "network: " + origin);',
+        "  for (const { path, access } of permissions.filesystem) out.push(`filesystem (${access}): ${path}`);",
+        '  if (permissions.microphone) out.push("microphone");',
+        '  if (permissions.camera) out.push("camera");',
+        "  return out;",
+        "}",
+        "function requestsMoreThanDefault(resources) {",
+        "  return resources !== undefined && (resources.profile !== contracts.DEFAULT_RESOURCE_PROFILE || resources.gpu === true);",
+        "}",
+        "const listing = input.listing;",
+        "const entries = input.manifests.map(({ path, manifest: value }) => {",
+        "  const read = parseManifest(value);",
+        "  if (!read.ok) return { path, accepted: false };",
+        "  const manifest = read.manifest;",
+        '  if (manifest.publisher === undefined) return { path, accepted: true, entry: null, problem: "no publisher" };',
+        "  const reach = contracts.declaredReachOf(manifest);",
+        "  const entry = {",
+        "    packageId: manifest.id,",
+        "    version: manifest.version,",
+        "    displayName: manifest.displayName,",
+        "    description: manifest.description,",
+        '    source: { kind: "npm", name: listing.npmName, version: manifest.version },',
+        "    publisher: { id: manifest.publisher.id, sourceUrl: manifest.publisher.sourceUrl, license: manifest.publisher.license },",
+        "    preview: listing.preview,",
+        "    facets: [...new Set(manifest.facets.map((facet) => facet.kind))],",
+        "    isolations: manifest.facets.map((facet) => ({ facetKind: facet.kind, isolation: facet.isolation })),",
+        "    platforms: manifest.platforms,",
+        "    hostApi: manifest.hostApi,",
+        "    permissionsSummary: requestedSummary(manifest.permissions),",
+        "    ...(contracts.declaredReachIsEmpty(reach) ? {} : { declaredReach: reach }),",
+        "    ...(requestsMoreThanDefault(manifest.resources) ? { resources: manifest.resources } : {}),",
+        "    riskTier: contracts.riskLaneFor(manifest.facets.map((facet) => facet.isolation)),",
+        "    sizeBytes: listing.sizeBytes,",
+        "    digest: listing.digest,",
+        "  };",
+        "  const parsed = contracts.directoryEntrySchema.safeParse(entry);",
+        "  if (!parsed.success) {",
+        "    const issue = parsed.error.issues[0];",
+        '    return { path, accepted: true, entry: null, problem: `${issue?.path.join(".") ?? ""} ${issue?.message ?? "invalid"}` };',
+        "  }",
+        "  return { path, accepted: true, entry: parsed.data };",
+        "});",
+        "process.stdout.write(JSON.stringify({ digests, entries }));",
+      ].join("\n"),
+    );
+    const output = runNode(
+      checkout,
+      [evaluator, join(checkout, FETCH_MODULE), join(checkout, READER_MODULE), join(checkout, CONTRACTS_MODULE)],
+      JSON.stringify({ archives, manifests, listing: ENTRY_LISTING }),
+    );
+    const facts = JSON.parse(output);
+    if (facts.digests?.length !== archives.length || facts.entries?.length !== manifests.length) {
+      throw new SyncError("ClarkCant's directory code returned the wrong number of results");
+    }
+    return facts;
+  } finally {
+    rmSync(tmp, { recursive: true, force: true });
+  }
+}
+
+/** The committed archives the digest is pinned on (`scripts/build-content-digest-fixtures.mjs` writes them). */
+function readArchives() {
+  if (!existsSync(archivesDir)) throw new SyncError(`${archivesDir} is missing; run scripts/build-content-digest-fixtures.mjs`);
+  return readdirSync(archivesDir)
+    .filter((name) => name.endsWith(".tgz"))
+    .sort()
+    .map((name) => ({ name, base64: readFileSync(join(archivesDir, name)).toString("base64") }));
+}
+
 // ---- The hostile corpus -------------------------------------------------------------------------------------------
 
 /**
@@ -254,13 +394,24 @@ function caseId(entry) {
 
 // ---- Reading ClarkCant --------------------------------------------------------------------------------------------
 
-/** The sha256 of a committed file, or null when the commit no longer has it (renamed or removed upstream). */
-function sha256OfCommitted(show, path) {
+/**
+ * The sha256 of a committed file, or of the excerpt a `#name` source names, or null when the commit no longer has it
+ * (renamed or removed upstream, or the excerpt's markers are gone).
+ */
+function sha256OfCommitted(show, source) {
+  const [path] = source.split("#");
   let text;
   try {
     text = show(path);
   } catch {
     return null;
+  }
+  const excerpt = SOURCE_EXCERPTS[source];
+  if (excerpt) {
+    const start = text.indexOf(excerpt.from);
+    const end = start === -1 ? -1 : text.indexOf(excerpt.to, start);
+    if (end === -1) return null;
+    text = text.slice(start, end + excerpt.to.length);
   }
   return sha256(text);
 }
@@ -315,9 +466,16 @@ function readUpstream(from) {
     corpus.map((entry) => applyMutation(parsed.get(entry.base), entry)),
   );
 
+  const directory = upstreamDirectoryFacts(
+    from,
+    readArchives(),
+    files.map((file) => ({ path: file.path, manifest: parsed.get(file.path) })),
+  );
+
   return {
     repository: repositoryOf(from),
     commit,
+    directory,
     files: files.map((file, index) => ({ ...file, accepted: fileVerdicts[index].ok, problem: fileVerdicts[index].problem })),
     contractSources: CONTRACT_SOURCES.map((source) => ({ source, sha256: sha256OfCommitted(show, source) })),
     cases: corpus.map((entry, index) => ({
@@ -357,12 +515,36 @@ function readRecorded() {
   if (!existsSync(upstreamFile)) return null;
   const upstream = JSON.parse(readFileSync(upstreamFile, "utf8"));
   const verdicts = existsSync(verdictsFile) ? JSON.parse(readFileSync(verdictsFile, "utf8")) : { cases: [] };
-  return { upstream, cases: verdicts.cases.map((entry) => ({ id: caseId(entry), accepted: entry.accepted })) };
+  const readJson = (file, fallback) => (existsSync(file) ? JSON.parse(readFileSync(file, "utf8")) : fallback);
+  return {
+    upstream,
+    cases: verdicts.cases.map((entry) => ({ id: caseId(entry), accepted: entry.accepted })),
+    digests: readJson(contentDigestsFile, { digests: [] }).digests,
+    entries: readJson(directoryEntriesFile, { entries: [] }).entries,
+  };
+}
+
+/** Differences between two keyed lists of recorded results, as readable lines. */
+function diffKeyed(before, after, key, what) {
+  const lines = [];
+  const recorded = new Map(before.map((entry) => [entry[key], JSON.stringify(entry)]));
+  for (const entry of after) {
+    const previous = recorded.get(entry[key]);
+    if (previous === undefined) lines.push(`added: ${what} ${entry[key]}`);
+    else if (previous !== JSON.stringify(entry)) lines.push(`changed: ${what} ${entry[key]} is now ${JSON.stringify(entry)}`);
+    recorded.delete(entry[key]);
+  }
+  for (const gone of recorded.keys()) lines.push(`removed: ${what} ${gone}`);
+  return lines;
 }
 
 function compare(recorded, current) {
-  const differences = { contractSources: [], files: [], fileVerdicts: [], flipped: [], added: 0, removed: 0 };
+  const differences = { contractSources: [], files: [], fileVerdicts: [], flipped: [], directory: [], added: 0, removed: 0 };
   if (!recorded) return differences;
+  differences.directory = [
+    ...diffKeyed(recorded.digests, current.directory.digests, "archive", "content digest of"),
+    ...diffKeyed(recorded.entries, current.directory.entries, "path", "directory entry for"),
+  ];
   const sources = new Map((recorded.upstream.contractSources ?? []).map((entry) => [entry.source, entry.sha256]));
   differences.contractSources = current.contractSources
     .filter((entry) => sources.get(entry.source) !== entry.sha256)
@@ -403,6 +585,7 @@ function describe(differences, recorded, current) {
   section("Shipped manifests changed", differences.files);
   section("Verdicts on shipped manifests flipped", differences.fileVerdicts);
   section("Verdicts on hostile variants flipped", differences.flipped);
+  section("Directory digests and entries changed", differences.directory);
   if (differences.added || differences.removed) {
     lines.push(`Hostile corpus: ${differences.added} new and ${differences.removed} dropped cases (their base manifests changed).`, "");
   }
@@ -415,6 +598,7 @@ function hasDrift(differences) {
     differences.files.length > 0 ||
     differences.fileVerdicts.length > 0 ||
     differences.flipped.length > 0 ||
+    differences.directory.length > 0 ||
     differences.added > 0 ||
     differences.removed > 0
   );
@@ -438,6 +622,19 @@ function write(current) {
     contractSources: current.contractSources,
   };
   writeFileSync(upstreamFile, `${JSON.stringify(upstream, null, 2)}\n`);
+  const note = "Generated by scripts/sync-clarkcant-fixtures.mjs from ClarkCant's own code. Do not edit by hand.";
+  writeFileSync(
+    contentDigestsFile,
+    `${JSON.stringify({ note, repository: current.repository, commit: current.commit, digests: current.directory.digests }, null, 2)}\n`,
+  );
+  writeFileSync(
+    directoryEntriesFile,
+    `${JSON.stringify(
+      { note, repository: current.repository, commit: current.commit, listing: ENTRY_LISTING, entries: current.directory.entries },
+      null,
+      2,
+    )}\n`,
+  );
 }
 
 function main(options) {
@@ -458,11 +655,15 @@ function main(options) {
   }
 
   const contractChanged =
-    differences.contractSources.length > 0 || differences.fileVerdicts.length > 0 || differences.flipped.length > 0;
+    differences.contractSources.length > 0 ||
+    differences.fileVerdicts.length > 0 ||
+    differences.flipped.length > 0 ||
+    differences.directory.some((line) => line.startsWith("changed:"));
   if (contractChanged && !options.accept) {
     throw new SyncError(
       `ClarkCant's manifest contract changed; nothing was written.\n\n${summary}\n` +
-        "Port the change to packages/contracts/src/manifest.ts with a test, then re-run with --accept.",
+        "Port the change to packages/contracts/src/manifest.ts (or directory.ts, or the marketplace's runtime content " +
+        "digest) with a test, then re-run with --accept.",
     );
   }
   const removed = current.contractSources.filter((entry) => entry.sha256 === null).map((entry) => entry.source);

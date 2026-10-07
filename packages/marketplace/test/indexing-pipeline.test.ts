@@ -33,6 +33,9 @@ import {
   resetIndexingState,
 } from "./support/indexing-fixtures";
 
+/** ClarkCant's digest of the example widget's files (`fixtures/upstream/clarkcant-directory/content-digests.json`). */
+const EXAMPLE_CONTENT_DIGEST = "sha256:c0e7d38c9b96712a76bb1121b5169129afd21269d728606180afd9a011fa96af";
+
 let deps: MarketplaceDeps;
 
 beforeEach(async () => {
@@ -124,6 +127,9 @@ describe("indexing the example widget from a real npm pack tarball", () => {
       integrity: latest?.npmIntegrity,
       openInClarkCant: "clarkcant://install?source=npm&package=%40clarkcant%2Fexample-frame-widget&version=1.0.0",
       cliCommand: `npm pack ${FIXTURE_NAME}@1.0.0`,
+      packageId: "cc.clarkcant.example-frame-widget",
+      contentDigest: EXAMPLE_CONTENT_DIGEST,
+      sizeBytes: 10210,
     });
   });
 

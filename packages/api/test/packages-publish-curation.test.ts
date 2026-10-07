@@ -82,6 +82,10 @@ describe("package read API", () => {
       integrity: "sha512-test",
       openInClarkCant: "clarkcant://install?source=npm&package=%40acme%2Fclock-widget&version=1.0.0",
       cliCommand: "npm pack @acme/clock-widget@1.0.0",
+      // A seeded version with a manifest ClarkCant cannot read, never measured.
+      packageId: null,
+      contentDigest: null,
+      sizeBytes: null,
     });
     expect((await call("/api/v1/packages/%40acme%2Fclock-widget/install?version=2.0.0")).status).toBe(404);
     expect((await call("/api/v1/packages/%40acme%2Fclock-widget/install?version=latest")).status).toBe(400);

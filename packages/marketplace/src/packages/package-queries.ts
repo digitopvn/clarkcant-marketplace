@@ -26,6 +26,8 @@ import { mediaUrlFor } from "@marketplace/media";
 import { and, asc, desc, eq } from "drizzle-orm";
 
 import type { MarketplaceDeps } from "../deps";
+import { directoryStatusOf, versionArtifactOf } from "../directory/directory-status";
+import { manifestIdOf } from "../directory/version-artifacts";
 import { findPackages } from "../search/search-packages";
 import { parseInput } from "../validation";
 import { isPubliclyVisible, latestFirst, packageSummaryColumns, toPackageSummary } from "./package-rows";
@@ -100,7 +102,7 @@ export async function getPackage(deps: MarketplaceDeps, rawName: unknown): Promi
     homepage: row.homepage,
     repositoryUrl: row.repositoryUrl,
     license: row.license,
-    latest: row.latestVersion ? await getVersionDetail(deps, row.id, row.latestVersion) : null,
+    latest: row.latestVersion ? await getVersionDetail(deps, row.id, row.name, row.latestVersion) : null,
     versions: versions.map((version) => ({ version: version.version, publishedAt: version.publishedAt.toISOString() })),
   };
 }
@@ -146,11 +148,12 @@ export async function getPackageInstall(
   const version = rawVersion === undefined ? row.latestVersion : parseInput(semverSchema, rawVersion);
   if (!version) throw new MarketplaceError("not_found", `package "${row.name}" has no indexed version`);
   const [found] = await deps.db
-    .select({ npmIntegrity: packageVersions.npmIntegrity })
+    .select({ id: packageVersions.id, npmIntegrity: packageVersions.npmIntegrity, manifest: packageVersions.manifest })
     .from(packageVersions)
     .where(and(eq(packageVersions.packageId, row.id), eq(packageVersions.version, version)))
     .limit(1);
   if (!found) throw new MarketplaceError("not_found", `version ${version} of "${row.name}" is not indexed`);
+  const artifact = await versionArtifactOf(deps, found.id);
   return {
     package: row.name,
     version,
@@ -158,6 +161,9 @@ export async function getPackageInstall(
     integrity: found.npmIntegrity,
     openInClarkCant: openInClarkCantUrl(row.name, version),
     cliCommand: `npm pack ${row.name}@${version}`,
+    packageId: artifact ? artifact.manifestId : manifestIdOf(found.manifest),
+    contentDigest: artifact?.contentDigest ?? null,
+    sizeBytes: artifact?.sizeBytes ?? null,
   };
 }
 
@@ -226,6 +232,7 @@ function declaredReach(manifest: unknown): Pick<NonNullable<PackageDetail["lates
 async function getVersionDetail(
   deps: MarketplaceDeps,
   packageId: string,
+  packageName: string,
   version: string,
 ): Promise<PackageDetail["latest"]> {
   const [row] = await deps.db
@@ -235,7 +242,7 @@ async function getVersionDetail(
     .limit(1);
   if (!row) return null;
 
-  const [facets, permissions, previews, checks] = await Promise.all([
+  const [facets, permissions, previews, checks, directory] = await Promise.all([
     deps.db
       .select({
         kind: packageFacets.kind,
@@ -270,6 +277,13 @@ async function getVersionDetail(
       .from(packageAudits)
       .where(eq(packageAudits.packageVersionId, row.id))
       .orderBy(asc(packageAudits.check)),
+    directoryStatusOf(deps, {
+      versionId: row.id,
+      packageRowId: packageId,
+      npmName: packageName,
+      npmVersion: row.version,
+      manifest: row.manifest,
+    }),
   ]);
 
   return {
@@ -294,6 +308,7 @@ async function getVersionDetail(
       height: preview.height,
     })),
     securityChecks: checks.map((check) => ({ ...check, details: check.details ?? null })),
+    directory,
   };
 }
 

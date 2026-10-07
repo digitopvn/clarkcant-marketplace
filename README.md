@@ -11,6 +11,7 @@ them, and reviews every permission a package asks for.
 | --- | --- |
 | How it fits together; discovery surfaces (Markdown twins, sitemaps, `llms.txt`) | [docs/architecture.md](docs/architecture.md) |
 | Trust signals and curation meanings, CSP and headers, rate limits, consent | [docs/security-boundaries.md](docs/security-boundaries.md) |
+| ClarkCant's directory feed (`GET /api/v1/directory`), runtime content digest, package id collisions | [docs/directory-feed.md](docs/directory-feed.md) |
 | MCP server for agents | [docs/mcp.md](docs/mcp.md) |
 | `clark-market` CLI | [docs/cli.md](docs/cli.md) |
 | Deploying, secrets, Cloudflare resources | [docs/deployment.md](docs/deployment.md) |
@@ -49,7 +50,7 @@ Local overrides for `wrangler.jsonc` vars go in `apps/web/.dev.vars` (see `.dev.
 | `pnpm verify` | `lint` + `typecheck` + `test` |
 | `pnpm lint` / `pnpm typecheck` | ESLint (flat config) / `tsc --noEmit` per package and `astro check` |
 | `pnpm test` | Vitest projects; service and API tests run against a real D1 with migrations applied |
-| `pnpm contract:check` / `pnpm contract:sync --from <clarkcant checkout> [--check \| --accept]` | Check / compare / refresh the ClarkCant manifests and verdicts the manifest mirror is pinned to ([how](docs/extending-indexers.md#keeping-the-manifest-mirror-in-sync-with-clarkcant)) |
+| `pnpm contract:check` / `pnpm contract:sync --from <clarkcant checkout> [--check \| --accept]` | Check / compare / refresh the ClarkCant manifests, verdicts, content digests and directory entries the marketplace is pinned to ([how](docs/extending-indexers.md#keeping-the-manifest-mirror-in-sync-with-clarkcant)) |
 | `pnpm test:e2e` | Playwright (smoke, SEO surfaces, headers, share, consent, axe, 375px); starts the dev server, or targets `BASE_URL`. `E2E_BUILT=1` adds the CSP and JavaScript-budget checks against a production build (`astro preview`, or staging after each deploy); `E2E_ADMIN_EMAIL`/`E2E_ADMIN_PASSWORD` enable the page-builder flow ([deployment](docs/deployment.md#configuration)) |
 | `pnpm index:local <name>@<version> --tarball <file.tgz>` | Index a real package tarball into the local database through the production pipeline, without contacting npm |
 | `pnpm db:generate` | Generate a migration from the Drizzle schema in `packages/db/src/schema` |

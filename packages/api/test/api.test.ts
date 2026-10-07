@@ -43,6 +43,20 @@ describe("public API", () => {
     expect(await search.json()).toMatchObject({ query: "dashboards", items: [{ name: "@acme/chart-widget" }] });
   });
 
+  it("serves ClarkCant's directory feed with shared-cache headers", async () => {
+    const response = await call("/api/v1/directory");
+    expect(response.status).toBe(200);
+    expect(response.headers.get("Cache-Control")).toBe("public, max-age=300, s-maxage=300");
+    // The seeded package was never measured, so it has no runtime content digest and no entry.
+    expect(await response.json()).toEqual({ format: "clarkcant-directory@1", entries: [], nextCursor: null });
+
+    for (const query of ["?cursor=not-ours", "?limit=0", "?limit=251"]) {
+      const refused = await call(`/api/v1/directory${query}`);
+      expect(refused.status, query).toBe(400);
+      expect(errorBodySchema.parse(await refused.json()).error.code, query).toBe("validation_failed");
+    }
+  });
+
   it("serves categories and collections", async () => {
     const categories = (await (await call("/api/v1/categories")).json()) as { items: { slug: string; packageCount: number }[] };
     expect(categories.items).toHaveLength(6);

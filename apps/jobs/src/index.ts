@@ -2,6 +2,7 @@ import { WorkflowEntrypoint, type WorkflowEvent, type WorkflowStep } from "cloud
 import { ingestMessageSchema, parseRuntimeVars, packageNameSchema, type IngestMessage } from "@marketplace/contracts";
 import {
   IndexingRejectedError,
+  backfillVersionArtifacts,
   createMarketplaceDeps,
   discoverNpmPackages,
   ensureDefaultPagesAsSystem,
@@ -116,6 +117,20 @@ export default {
           if (result.created.length > 0) console.info(`default pages (${controller.cron}): published ${result.created.join(", ")}`);
         },
         (error: unknown) => console.error(`default pages (${controller.cron}) failed`, error),
+      ),
+    );
+    // Every tick: measure a few versions indexed before ClarkCant's directory needed their content digest. Once none
+    // are owed this is one query; a version that fails transiently is retried on a later tick.
+    ctx.waitUntil(
+      backfillVersionArtifacts(deps).then(
+        (result) => {
+          if (result.measured + result.withoutDigest + result.failed > 0) {
+            console.info(
+              `artifact backfill (${controller.cron}): measured ${result.measured}, without digest ${result.withoutDigest}, failed ${result.failed}`,
+            );
+          }
+        },
+        (error: unknown) => console.error(`artifact backfill (${controller.cron}) failed`, error),
       ),
     );
     if (controller.cron !== DISCOVERY_CRON) return;

@@ -21,6 +21,7 @@ export const FIXTURE_TARBALLS_SETUP = fileURLToPath(import.meta.url);
 const REPO_ROOT = path.resolve(path.dirname(FIXTURE_TARBALLS_SETUP), "../..");
 const FIXTURE_DIR = path.join(REPO_ROOT, "fixtures/widgets/example-frame-widget");
 const UPSTREAM_DIR = path.join(REPO_ROOT, "fixtures/upstream/clarkcant");
+const DIGEST_ARCHIVES_DIR = path.join(REPO_ROOT, "fixtures/upstream/clarkcant-directory/archives");
 
 export type FixtureVariant =
   | "valid"
@@ -29,7 +30,8 @@ export type FixtureVariant =
   | "invalidManifest"
   | "invalidServiceManifest"
   | "maxPermissionRows"
-  | "tooManyPermissionRows";
+  | "tooManyPermissionRows"
+  | "sameIdOtherName";
 
 /** One npm package built around a vendored ClarkCant manifest. */
 export interface UpstreamPackage {
@@ -49,6 +51,8 @@ declare module "vitest" {
     upstreamPackages: UpstreamPackage[];
     /** True when `LIVE_NPM=1`: opt-in tests that talk to the real npm registry. */
     liveNpm: boolean;
+    /** Base64 bytes of every archive in `fixtures/upstream/clarkcant-directory/archives`, by file name. */
+    contentDigestArchives: Record<string, string>;
   }
 }
 
@@ -204,6 +208,10 @@ export default function setup(project: TestProject): () => void {
     // The marketplace's permission-row limit (MAX_PERMISSION_ROWS in manifest-validation.ts) and one past it.
     maxPermissionRows: permissionRowsPackage(root, "@clarkcant/example-max-permissions", 2048),
     tooManyPermissionRows: permissionRowsPackage(root, "@clarkcant/example-too-many-permissions", 2049),
+    // Another npm package declaring the example's ClarkCant package id: a collision in the directory feed.
+    sameIdOtherName: variant(root, "same-id-other-name", (dir) => {
+      editJson(path.join(dir, "package.json"), (json) => (json.name = "@clarkcant/example-frame-widget-fork"));
+    }),
   };
 
   const tarballs = {} as Record<FixtureVariant, string>;
@@ -227,6 +235,14 @@ export default function setup(project: TestProject): () => void {
   project.provide("fixtureTarballs", tarballs);
   project.provide("upstreamPackages", upstreamPackages);
   project.provide("liveNpm", process.env.LIVE_NPM === "1");
+  project.provide(
+    "contentDigestArchives",
+    Object.fromEntries(
+      readdirSync(DIGEST_ARCHIVES_DIR)
+        .filter((name) => name.endsWith(".tgz"))
+        .map((name) => [name, readFileSync(path.join(DIGEST_ARCHIVES_DIR, name)).toString("base64")]),
+    ),
+  );
 
   return () => rmSync(root, { recursive: true, force: true });
 }

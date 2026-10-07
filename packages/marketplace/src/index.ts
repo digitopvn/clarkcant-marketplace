@@ -38,6 +38,7 @@ export {
 } from "./idempotency/idempotency-store";
 
 export * from "./indexing";
+export * from "./directory";
 
 export {
   createApiToken,

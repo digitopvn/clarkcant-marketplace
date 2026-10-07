@@ -41,6 +41,7 @@ export function detail(overrides: Partial<PackageDetail> = {}): PackageDetail {
       resources: null,
       previews: [],
       securityChecks: [{ check: "integrity", result: "pass", details: null }],
+      directory: null,
     },
     versions: [{ version: "1.2.3", publishedAt: "2026-09-01T00:00:00.000Z" }],
     ...overrides,
@@ -54,6 +55,9 @@ export const INSTALL: PackageInstall = {
   integrity: "sha512-abc",
   openInClarkCant: "clarkcant://install?source=npm&package=%40acme%2Fframe-widget&version=1.2.3",
   cliCommand: "npm pack @acme/frame-widget@1.2.3",
+  packageId: "acme.frame-widget",
+  contentDigest: null,
+  sizeBytes: null,
 };
 
 export const VERSIONS: PackageVersionSummary[] = [
