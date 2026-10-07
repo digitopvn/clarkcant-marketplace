@@ -173,6 +173,27 @@ export const packageSecurityCheckSchema = z.object({
 });
 export type PackageSecurityCheck = z.infer<typeof packageSecurityCheckSchema>;
 
+/**
+ * How a version appears in ClarkCant's directory feed (`GET /api/v1/directory`). Discovery facts only: ClarkCant
+ * recomputes the digest after fetching from npm and asks its own policy.
+ */
+export const packageDirectoryStatusSchema = z.object({
+  /** The ClarkCant package id the manifest declares (`clarkcant.json` `id`); null if the stored manifest is unreadable. */
+  packageId: z.string().nullable(),
+  /**
+   * The runtime content digest of the npm archive, computed as ClarkCant computes it after fetching (`sha256:<hex>`);
+   * null when it was not computed (see `reason`).
+   */
+  contentDigest: z.string().nullable(),
+  /** Total bytes of the archive's regular files; null when the archive was not measured. */
+  sizeBytes: z.int().nonnegative().nullable(),
+  /** Whether the directory feed serves this version. */
+  listed: z.boolean(),
+  /** Why the feed does not serve it (another package holds the id, no publisher, no digest...); null when listed. */
+  reason: z.string().nullable(),
+});
+export type PackageDirectoryStatus = z.infer<typeof packageDirectoryStatusSchema>;
+
 export const packageVersionDetailSchema = z.object({
   version: z.string(),
   publishedAt: isoDateTime,
@@ -197,6 +218,8 @@ export const packageVersionDetailSchema = z.object({
   previews: z.array(packagePreviewSchema),
   /** Automated facts recorded at index time. Distinct from curation: a passing check is not a review. */
   securityChecks: z.array(packageSecurityCheckSchema),
+  /** The version as ClarkCant's directory feed describes it; null for a version indexed before it was measured. */
+  directory: packageDirectoryStatusSchema.nullable(),
 });
 export type PackageVersionDetail = z.infer<typeof packageVersionDetailSchema>;
 
@@ -287,6 +310,15 @@ export const packageInstallSchema = z.object({
   openInClarkCant: z.string(),
   /** Copyable fallback that fetches the exact tarball npm serves, for manual verification or offline install. */
   cliCommand: z.string(),
+  /** The ClarkCant package id the version's manifest declares. */
+  packageId: z.string().nullable(),
+  /**
+   * The runtime content digest ClarkCant should find after extracting the archive (`sha256:<hex>`), null when it was
+   * not computed. A claim to check, never a substitute for checking.
+   */
+  contentDigest: z.string().nullable(),
+  /** Total bytes of the archive's regular files, null when not measured. */
+  sizeBytes: z.int().nonnegative().nullable(),
 });
 export type PackageInstall = z.infer<typeof packageInstallSchema>;
 

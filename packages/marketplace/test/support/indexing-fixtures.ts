@@ -19,7 +19,8 @@ export type FixtureVariant =
   | "invalidManifest"
   | "invalidServiceManifest"
   | "maxPermissionRows"
-  | "tooManyPermissionRows";
+  | "tooManyPermissionRows"
+  | "sameIdOtherName";
 
 /** One npm package built around a vendored ClarkCant manifest (see `fixture-tarballs.setup.ts`). */
 export interface UpstreamPackage {
@@ -37,6 +38,8 @@ declare module "vitest" {
     upstreamPackages: UpstreamPackage[];
     /** True when `LIVE_NPM=1`: opt-in tests that talk to the real npm registry. */
     liveNpm: boolean;
+    /** Base64 bytes of every archive in `fixtures/upstream/clarkcant-directory/archives`, by file name. */
+    contentDigestArchives: Record<string, string>;
   }
 }
 
@@ -49,6 +52,11 @@ function decodeBase64(value: string): Uint8Array {
 
 export function fixtureTarball(variant: FixtureVariant): Uint8Array {
   return decodeBase64(inject("fixtureTarballs")[variant]);
+}
+
+/** The archives ClarkCant's runtime content digest is pinned on, by file name. */
+export function contentDigestArchives(): Map<string, Uint8Array> {
+  return new Map(Object.entries(inject("contentDigestArchives")).map(([name, base64]) => [name, decodeBase64(base64)]));
 }
 
 /** Every package built from a vendored ClarkCant manifest, with its tarball bytes. */

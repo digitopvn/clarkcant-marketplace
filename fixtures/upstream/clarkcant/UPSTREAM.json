@@ -181,6 +181,22 @@
     {
       "source": "packages/core/src/widget-package.ts",
       "sha256": "5dcfca648d66caccadd5bd8af3f707e739a18173a9b14a5eab7a31c4bb741f85"
+    },
+    {
+      "source": "packages/contracts/src/directory.ts",
+      "sha256": "dc0d3f33c3aa8b2d35b568d6198ca31e38410aec8481a07dcd1149e25be3f3c2"
+    },
+    {
+      "source": "packages/contracts/src/declared-reach.ts",
+      "sha256": "f5a54a77f743e4cbdf93b4b02ee34ced7d19b735085a3d3fc65c81172bb83b79"
+    },
+    {
+      "source": "packages/core/src/package-fetch.ts",
+      "sha256": "4187b1d15d7a842d058524905a4735f5165a6a4657d9b5f8c4f5fc6a9a61cd70"
+    },
+    {
+      "source": "packages/widget-cli/src/cli.ts#directory-entry",
+      "sha256": "aa14ad0502eab5bbcf6141be9b9e01bb2714e8296cf3b74c9d8c7b06baee1c8b"
     }
   ]
 }

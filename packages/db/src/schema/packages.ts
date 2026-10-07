@@ -85,6 +85,33 @@ export const packageVersions = sqliteTable(
   ],
 );
 
+/**
+ * What ClarkCant's directory needs about a version's npm archive and cannot read from the manifest: the runtime
+ * content digest and size, measured from the integrity-verified tarball exactly as ClarkCant measures it after
+ * fetching (`packages/marketplace/src/indexing/runtime-content-digest.ts`), and the manifest's package id, indexed so
+ * two npm packages claiming one id can be told apart. One row per version, written once; a version indexed before
+ * this table existed gets its row from the backfill job. Discovery facts only: ClarkCant recomputes the digest itself.
+ */
+export const packageVersionArtifacts = sqliteTable(
+  "package_version_artifacts",
+  {
+    packageVersionId: text("package_version_id")
+      .primaryKey()
+      .references(() => packageVersions.id, { onDelete: "cascade" }),
+    /** The `id` the version's `clarkcant.json` declares (the ClarkCant package id); null if the stored manifest is unreadable. */
+    manifestId: text("manifest_id"),
+    /** `sha256:<hex>`; null when the archive has no digest ClarkCant would agree with (see `digestProblem`). */
+    contentDigest: text("content_digest"),
+    /** Total bytes of the archive's regular files; null with the digest. */
+    sizeBytes: integer("size_bytes"),
+    fileCount: integer("file_count"),
+    /** Why there is no digest, in words; null when there is one. */
+    digestProblem: text("digest_problem"),
+    computedAt: timestampMs("computed_at").notNull(),
+  },
+  (table) => [index("package_version_artifacts_manifest_id_idx").on(table.manifestId)],
+);
+
 export const packageFacets = sqliteTable(
   "package_facets",
   {

@@ -48,3 +48,11 @@ export { MAX_README_BYTES, readPackageArchive, type PackageArchive } from "./pac
 export { compareSemver, isNewerSemver } from "./semver-order";
 export { TarFormatError, readTar, readTarGz, type TarEntry } from "./tar-reader";
 export { renderSocialCardSvg } from "./social-card";
+export {
+  RUNTIME_MAX_DECOMPRESSED_BYTES,
+  RUNTIME_MAX_TARBALL_BYTES,
+  RUNTIME_MAX_TAR_ENTRIES,
+  computeRuntimeContentDigest,
+  type RuntimeContentDigest,
+  type RuntimeContentDigestOptions,
+} from "./runtime-content-digest";

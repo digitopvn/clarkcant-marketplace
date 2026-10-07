@@ -5,6 +5,7 @@ import { requestId } from "./http/request-id";
 import { actorMiddleware } from "./middleware/actor";
 import { createAdminRouter } from "./routes/admin";
 import { createCatalogRouter } from "./routes/catalog";
+import { createDirectoryRouter } from "./routes/directory";
 import { createHealthRouter } from "./routes/health";
 import { createMeRouter } from "./routes/me";
 import { createPackagesRouter } from "./routes/packages";
@@ -39,6 +40,7 @@ export function createApi(options: CreateApiOptions) {
   app.route(API_BASE_PATH, createPackagesRouter());
   app.route(API_BASE_PATH, createSearchRouter());
   app.route(API_BASE_PATH, createCatalogRouter());
+  app.route(API_BASE_PATH, createDirectoryRouter());
   app.route(API_BASE_PATH, createPagesRouter());
   app.route(API_BASE_PATH, createMeRouter());
   app.route(API_BASE_PATH, createPublishRouter());
@@ -53,6 +55,7 @@ export function createApi(options: CreateApiOptions) {
       { name: "packages", description: "Package listings" },
       { name: "search", description: "Full-text search" },
       { name: "catalog", description: "Categories and collections" },
+      { name: "directory", description: "ClarkCant's directory feed (clarkcant-directory@1): discovery claims ClarkCant verifies" },
       { name: "pages", description: "Published page documents and the page builder admin API (versioned, If-Match guarded)" },
       { name: "account", description: "The signed-in account, personal API tokens, linked devices and OAuth grants" },
       { name: "publishers", description: "Publisher organisations, members, verification and package claims" },

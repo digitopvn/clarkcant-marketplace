@@ -380,6 +380,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/directory": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * ClarkCant's directory feed (clarkcant-directory@1): one entry per listed npm package version
+         * @description The feed ClarkCant's official directory source reads. Each entry describes one publicly listed, measured version in ClarkCant's `DirectoryEntry` shape: the `clarkcant.json` package id and facts, the npm coordinate, and the runtime content `digest` and `sizeBytes` of the archive. Pages follow `nextCursor` (null on the last page) and hold at most `limit` entries. When two npm packages declare one package id, only the holder is listed: a verified publisher first, then the first to claim it. Entries are discovery claims, never authority: ClarkCant re-resolves the npm version, verifies npm's integrity and the digest, and applies its own policy.
+         */
+        get: operations["getDirectoryFeed"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/health": {
         parameters: {
             query?: never;
@@ -893,6 +913,82 @@ export interface components {
                 slug: string;
                 title: string;
             }[];
+        };
+        DirectoryEntry: {
+            declaredReach?: {
+                browserTokens: {
+                    provider: string;
+                    purpose: string;
+                    scopes: string[];
+                }[];
+                connections?: {
+                    displayName: string;
+                    endpoints: string[];
+                    provider: string;
+                    scopes: {
+                        purpose: string;
+                        scope: string;
+                    }[];
+                }[];
+                origins: {
+                    origin: string;
+                    purpose: string;
+                    secret?: string;
+                }[];
+                secrets: {
+                    name: string;
+                    purpose: string;
+                }[];
+            };
+            description: string;
+            digest: string;
+            displayName: string;
+            facets: ("tools" | "ui" | "skills" | "prompts" | "themes" | "setup" | "driver" | "voice")[];
+            hostApi: {
+                max: number;
+                min: number;
+            };
+            isolations: {
+                /** @enum {string} */
+                facetKind: "tools" | "ui" | "skills" | "prompts" | "themes" | "setup" | "driver" | "voice";
+                /** @enum {string} */
+                isolation: "declarative" | "service" | "isolated-ui" | "trusted-native";
+            }[];
+            packageId: string;
+            permissionsSummary: string[];
+            platforms: ("darwin-arm64" | "darwin-x64" | "linux-x64" | "linux-arm64" | "win32-x64" | "win32-arm64" | "web")[];
+            preview: {
+                imageUrl?: string;
+                videoUrl?: string;
+            };
+            publisher: {
+                id: string;
+                license: string;
+                sourceUrl: string;
+            };
+            resources?: {
+                gpu?: boolean;
+                /** @enum {string} */
+                profile: "interactive-light" | "interactive-heavy" | "media-workstation" | "background-compute";
+                /** @enum {number} */
+                version: 1;
+            };
+            /** @enum {string} */
+            riskTier: "isolated-ui" | "service" | "declarative" | "trusted-native";
+            sizeBytes: number;
+            source: {
+                /** @enum {string} */
+                kind: "npm";
+                name: string;
+                version: string;
+            };
+            version: string;
+        };
+        DirectoryFeedPage: {
+            entries: components["schemas"]["DirectoryEntry"][];
+            /** @enum {string} */
+            format: "clarkcant-directory@1";
+            nextCursor: string | null;
         };
         Health: {
             /** Format: date-time */
@@ -5225,6 +5321,63 @@ export interface operations {
             };
         };
     };
+    getDirectoryFeed: {
+        parameters: {
+            query?: {
+                cursor?: string;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description One page of the directory feed */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DirectoryFeedPage"];
+                };
+            };
+            /** @description Invalid request (`validation_failed` or `bad_request`) */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        error: {
+                            /** @enum {string} */
+                            code: "bad_request" | "validation_failed" | "unauthorized" | "forbidden" | "not_found" | "conflict" | "idempotency_key_reused" | "idempotency_in_progress" | "rate_limited" | "configuration_error" | "not_implemented" | "internal_error";
+                            details?: unknown;
+                            message: string;
+                            requestId: string;
+                        };
+                    };
+                };
+            };
+            /** @description Server error (`internal_error` or `configuration_error`) */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        error: {
+                            /** @enum {string} */
+                            code: "bad_request" | "validation_failed" | "unauthorized" | "forbidden" | "not_found" | "conflict" | "idempotency_key_reused" | "idempotency_in_progress" | "rate_limited" | "configuration_error" | "not_implemented" | "internal_error";
+                            details?: unknown;
+                            message: string;
+                            requestId: string;
+                        };
+                    };
+                };
+            };
+        };
+    };
     getHealth: {
         parameters: {
             query?: never;
@@ -8462,6 +8615,13 @@ export interface operations {
                                 purpose: string;
                                 scopes: string[];
                             }[];
+                            directory: {
+                                contentDigest: string | null;
+                                listed: boolean;
+                                packageId: string | null;
+                                reason: string | null;
+                                sizeBytes: number | null;
+                            } | null;
                             facets: {
                                 entry: string;
                                 isolation: string;
@@ -8646,9 +8806,12 @@ export interface operations {
                 content: {
                     "application/json": {
                         cliCommand: string;
+                        contentDigest: string | null;
                         integrity: string;
                         openInClarkCant: string;
                         package: string;
+                        packageId: string | null;
+                        sizeBytes: number | null;
                         /** @enum {string} */
                         source: "npm";
                         version: string;
@@ -9219,4 +9382,4 @@ export interface operations {
 }
 
 /** SHA-256 of the OpenAPI document these types were generated from (without `servers`). */
-export const OPENAPI_DOCUMENT_SHA256 = "cb73696da2f6812e4ba44fba6ba8696a1f7d0d9dcf956fadc8c09e1b266b013d";
+export const OPENAPI_DOCUMENT_SHA256 = "235f0038298d08b3987477cde0db76cdd9f81412d3db5fcc9088eff1a33f6542";

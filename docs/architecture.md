@@ -100,6 +100,9 @@ Markdown form, a `.md` twin linked with `<link rel="alternate" type="text/markdo
 | `/packages`, `/collections` | `/packages.md`, `/collections.md` | catalogue listings (with `ItemList` JSON-LD on the HTML) |
 | `/categories/<slug>`, `/collections/<slug>` | `.md` | listings |
 
+ClarkCant reads the marketplace through `GET /api/v1/directory`, a feed of `DirectoryEntry` values in ClarkCant's own
+shape ([directory feed](directory-feed.md)).
+
 Machine-readable indexes: `/robots.txt` (indexing allowed only when `ENVIRONMENT=production`), `/sitemap.xml`
 (an index of `/sitemap-<segment>.xml` files: pages, categories, collections, packages in pages of 5,000, `PACKAGES_PER_SITEMAP`),
 `/llms.txt` (curated navigation) and `/llms-full.txt` (first-party marketplace pages only; never third-party
@@ -130,7 +133,9 @@ their unshifted headings until re-indexed (local development data only).
   Better Auth CLI and must be regenerated, not edited.
 - Migrations are drizzle-kit output plus hand-written SQL for what Drizzle cannot express:
   `packages_fts` (FTS5, BM25 ranking) and the category seed. `pnpm migrations:check` fails on drift.
-- `package_versions` rows are immutable once written. Public visibility is limited to the
+- `package_versions` rows are immutable once written. What ClarkCant's directory needs about a version's archive
+  (manifest id, runtime content digest, size) lives beside it in `package_version_artifacts`, written once
+  ([directory feed](directory-feed.md#storage-and-backfill)). Public visibility is limited to the
   `listed` and `featured` curation states ([what they mean](security-boundaries.md#curation-and-trust)).
 - Multi-statement writes that must be atomic (audit + change, search index refresh) go through
   `db.batch`.

@@ -31,8 +31,11 @@ dead-letter queue (`*-ingest-*-dlq`).
    configured registry (`untrusted_tarball_url` otherwise).
 2. **ingest**: download the tarball (size-capped), verify the registry's sha512 `integrity`
    (`integrity.ts`), untar in memory (`tar-reader.ts`), find and validate the ClarkCant manifest
-   (`manifest-validation.ts`; `schemaVersion` 2 or 1, as ClarkCant reads them), sanitize the README, store preview images in R2, and write the
-   immutable version row.
+   (`manifest-validation.ts`; `schemaVersion` 2 or 1, as ClarkCant reads them), measure the archive's runtime
+   content digest for ClarkCant's directory (`runtime-content-digest.ts`, see [the directory feed](directory-feed.md)),
+   sanitize the README, store preview images in R2, and write the immutable version row with its
+   `package_version_artifacts` row. An already indexed version is never rewritten; if it has no artifact row yet, it
+   is downloaded again only to measure it.
 3. **social card**: render the package card (`social-card.ts`, SVG).
 4. **finalize**: move the latest pointer, refresh the FTS index, close the submission, write the audit record. The
    pointer follows npm's `latest` dist-tag but only moves forward in semver order, with a compare-and-set on the
@@ -88,12 +91,20 @@ drift. `fixtures/upstream/clarkcant/` records ClarkCant at one commit, in both d
   deleted, set to the wrong type, an empty or out-of-range value, a duplicated entry, an unknown field), each with the
   verdict of ClarkCant's real `parseManifest` (`packages/core/src/widget-package.ts`).
 
+- **What ClarkCant's directory computes**: `fixtures/upstream/clarkcant-directory/` holds committed archives
+  (`scripts/build-content-digest-fixtures.mjs` writes them), ClarkCant's `inspectNpmTarball` result for each
+  (`content-digests.json`), and the directory entry `clark widget publish`'s mapping builds for every shipped manifest
+  under ClarkCant's `directoryEntrySchema` (`directory-entries.json`). See [the directory feed](directory-feed.md).
+
 `UPSTREAM.json` records the repository, the full commit SHA, each file's source path, sha256 and verdict, the sha256 and
 size of `verdicts.json`, and the sha256 of the ClarkCant contract sources the mirror follows.
 
 - `pnpm contract:check` proves the recordings are byte-for-byte what `UPSTREAM.json` lists and that the mirror reaches
   ClarkCant's verdict on every shipped manifest and every hostile variant: it accepts what ClarkCant accepts and
-  refuses what ClarkCant refuses. It is part of `pnpm test`, so `pnpm verify` and CI run it.
+  refuses what ClarkCant refuses. It also requires the marketplace to build exactly the directory entries ClarkCant
+  built. It is part of `pnpm test`, so `pnpm verify` and CI run it.
+- `packages/marketplace/test/runtime-content-digest.test.ts` requires the marketplace's digest (or refusal) of every
+  committed archive to equal ClarkCant's.
 - `packages/marketplace/test/indexing-upstream-manifests.test.ts` packs each reference app and the blank template with
   `npm pack` and indexes it through the real pipeline against D1.
 - The **Upstream ClarkCant contract** workflow (`.github/workflows/upstream-contract.yml`) runs weekly and on demand.
@@ -118,8 +129,11 @@ The script reads the manifests from the checkout's `HEAD`, runs the checkout's o
 own manifest reader for the verdicts, and refuses when the CLI, contracts or core packages have uncommitted changes.
 When a contract source hash or a verdict changed it exits non-zero and writes nothing, unless `--accept` is passed.
 Read that diff in ClarkCant (`install.ts`, `primitives.ts`, `grants.ts`, `network-origin.ts`, `browser-token.ts`,
-the `service-*` modules, `resource-profiles.ts`, `widget-package.ts`), port it to `manifest.ts` with a test, then
-refresh with `--accept` and run `pnpm verify`. Never edit the recordings by hand; the check fails on any change.
+the `service-*` modules, `resource-profiles.ts`, `widget-package.ts`; for the directory `directory.ts`,
+`declared-reach.ts`, `package-fetch.ts` and the entry mapping in `widget-cli/src/cli.ts`), port it to `manifest.ts`,
+`directory.ts` or `runtime-content-digest.ts` with a test, then refresh with `--accept` and run `pnpm verify`. A
+changed digest or entry counts as a contract change. To add a digest case, add it to
+`scripts/build-content-digest-fixtures.mjs`, run it, then refresh. Never edit the recordings by hand; the check fails on any change.
 
 ## Extending
 
