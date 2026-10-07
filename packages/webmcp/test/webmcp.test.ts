@@ -129,7 +129,13 @@ describe("package page tools", () => {
   it("reads the current package, versions, permissions and similar widgets", async () => {
     expect((await context.call("get_current_package")).structuredContent).toMatchObject({ name: "@acme/clock-widget" });
     expect((await context.call("get_versions")).structuredContent).toMatchObject({ items: [{ version: "1.0.0" }] });
-    expect((await context.call("inspect_permissions")).structuredContent).toMatchObject({ package: "@acme/clock-widget", version: "1.0.0" });
+    expect((await context.call("inspect_permissions")).structuredContent).toMatchObject({
+      package: "@acme/clock-widget",
+      version: "1.0.0",
+      services: [],
+      browserTokens: [],
+      resources: null,
+    });
     const similar = await context.call("find_similar_widgets", { limit: 3 });
     expect(similar.structuredContent).toMatchObject({ items: [{ package: { name: "@tempo/timer-widget" } }] });
     expect((await context.call("find_similar_widgets", { limit: 99 })).structuredContent).toMatchObject({ error: { code: "validation_failed" } });

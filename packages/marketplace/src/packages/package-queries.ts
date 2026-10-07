@@ -1,12 +1,14 @@
 import {
   MarketplaceError,
   listPackagesQuerySchema,
+  normalizeStoredManifest,
   packageNameSchema,
   semverSchema,
   type ListPackagesQueryInput,
   type Page,
   type PackageDetail,
   type PackageInstall,
+  type PackageService,
   type PackageSummary,
   type PackageVersionSummary,
 } from "@marketplace/contracts";
@@ -165,6 +167,62 @@ function platformsOf(manifest: unknown): string[] {
   return Array.isArray(platforms) ? platforms.filter((entry): entry is string => typeof entry === "string") : [];
 }
 
+function schemaVersionOf(manifest: unknown): 1 | 2 | null {
+  if (typeof manifest !== "object" || manifest === null) return null;
+  const schemaVersion = (manifest as { schemaVersion?: unknown }).schemaVersion;
+  return schemaVersion === 1 || schemaVersion === 2 ? schemaVersion : null;
+}
+
+/**
+ * What a version's manifest declares beyond flat permission rows: services with their capabilities, egress and account
+ * connection, scoped browser tokens and the resource profile. Read from the immutable stored manifest, which is the
+ * record of what was validated; a row that no longer matches the mirror shows no details rather than failing the page.
+ */
+function declaredReach(manifest: unknown): Pick<NonNullable<PackageDetail["latest"]>, "services" | "browserTokens" | "resources"> {
+  const normalized = normalizeStoredManifest(manifest);
+  if (!normalized) return { services: [], browserTokens: [], resources: null };
+  const services: PackageService[] = normalized.services.map((service) => ({
+    facetId: service.facetId,
+    entry: service.entry,
+    protocol: service.protocol,
+    capabilities: service.capabilities.map((capability) => ({
+      tool: capability.tool,
+      ref: capability.ref,
+      summary: capability.summary,
+      effectCategory: capability.effectCategory,
+      job: capability.execution?.kind === "job",
+      requiredScopes: capability.requiredScopes ?? [],
+      inputArtifactFields: capability.inputArtifacts?.fields ?? [],
+    })),
+    egress: service.egress
+      ? {
+          secrets: service.egress.secrets.map((secret) => ({ name: secret.name, purpose: secret.purpose })),
+          origins: service.egress.origins.map((origin) => ({
+            origin: origin.origin,
+            purpose: origin.purpose,
+            credential: origin.credential
+              ? { secret: origin.credential.secret, header: origin.credential.header, scheme: origin.credential.scheme }
+              : null,
+          })),
+        }
+      : null,
+    connection: service.connection
+      ? {
+          provider: service.connection.provider,
+          displayName: service.connection.displayName,
+          flow: service.connection.flow,
+          authorizationEndpoint: service.connection.authorization.authorizationEndpoint,
+          tokenEndpoint: service.connection.authorization.tokenEndpoint,
+          revocationEndpoint: service.connection.authorization.revocationEndpoint ?? null,
+          scopes: service.connection.scopes.map((scope) => ({ scope: scope.scope, purpose: scope.purpose })),
+          endpoints: service.connection.endpoints,
+          probeUrl: service.connection.probe.url,
+        }
+      : null,
+  }));
+  return { services, browserTokens: normalized.browserTokens, resources: normalized.resources };
+}
+
 async function getVersionDetail(
   deps: MarketplaceDeps,
   packageId: string,
@@ -223,8 +281,10 @@ async function getVersionDetail(
     hasProvenance: row.provenance !== null && row.provenance !== undefined,
     readmeHtml: row.readmeHtml,
     platforms: platformsOf(row.manifest),
+    manifestSchemaVersion: schemaVersionOf(row.manifest),
     facets,
     permissions,
+    ...declaredReach(row.manifest),
     previews: previews.map((preview) => ({
       kind: preview.kind,
       url: mediaUrlFor(preview.r2Key),

@@ -113,8 +113,38 @@
     box-shadow: var(--shadow);
   }
 
-  .consent-banner[hidden] {
+  .consent-banner[hidden],
+  .consent-options[hidden] {
     display: none;
+  }
+
+  /* "Choose" sits inline in the banner copy, so it reads as a link but is a disclosure button. */
+  .consent-link {
+    color: var(--accent);
+    text-decoration: underline;
+    cursor: pointer;
+  }
+
+  .consent-options {
+    display: grid;
+    gap: var(--space-2);
+    justify-items: start;
+    margin-top: var(--space-2);
+  }
+
+  .consent-option {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--space-2);
+    color: var(--text-muted);
+  }
+
+  .consent-option input {
+    flex: none;
+    width: 1.125rem;
+    height: 1.125rem;
+    margin-top: 0.125rem;
+    accent-color: var(--accent);
   }
 
   .consent-button,

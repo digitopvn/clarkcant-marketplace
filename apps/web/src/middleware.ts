@@ -2,6 +2,7 @@ import { requestCarriesCredentials, resolveRequestAuth } from "@marketplace/auth
 import { ANONYMOUS_ACTOR, actorHasScope, isMarketplaceError, type Actor } from "@marketplace/contracts";
 import { defineMiddleware, sequence } from "astro:middleware";
 
+import { edgeTransformOptOut } from "./middleware/edge-transform-opt-out";
 import { rateLimit } from "./middleware/rate-limit";
 import { requestLog } from "./middleware/request-log";
 import { securityHeaders } from "./middleware/security-headers";
@@ -82,8 +83,9 @@ const pageAuth = defineMiddleware(async (context, next) => {
 });
 
 /**
- * Order matters: logging wraps everything (rejected requests included), security headers apply to every response
- * (429s and redirects included), rate limits run before any authentication or database work, and the page actor
+ * Order matters: logging wraps everything (rejected requests included), every HTML page opts out of edge rewriting
+ * (it would inject analytics before consent) and is compressed by the runtime, security headers apply to every
+ * response (429s and redirects included), rate limits run before any authentication or database work, and the page actor
  * and `/admin` guard run last.
  */
-export const onRequest = sequence(requestLog, securityHeaders, rateLimit, pageAuth);
+export const onRequest = sequence(requestLog, edgeTransformOptOut, securityHeaders, rateLimit, pageAuth);

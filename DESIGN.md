@@ -59,7 +59,9 @@ component. Muted and faint text meet 4.5:1 on `--bg` in both themes; keep it tha
   Package filters apply on change (a small bundled script); the Search button stays for keyboard and no-JS use.
 - **Share bar**: "Copy as Markdown" leads (primary), then "View as Markdown" (plain link), "Copy URL", native share,
   and "Ask ChatGPT / Claude / Perplexity / Gemini". Targets live in `packages/seo/src/share.ts`.
-- **Cookie banner**: fixed to the bottom, compact on phones (at most ~20% of a 375×812 screen), two equal buttons.
+- **Cookie banner**: fixed to the bottom, compact on phones (at most ~20% of a 375×812 screen), two equal buttons
+  ("Essential only", "Allow all"). Per-category switches (preferences, analytics) sit behind an inline "Choose"
+  disclosure and open expanded from "Cookie settings".
 
 ## Motion
 

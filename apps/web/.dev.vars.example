@@ -7,6 +7,8 @@ PUBLIC_SITE_URL=
 ENVIRONMENT=
 # Comma-separated admin email allowlist
 ADMIN_EMAILS=
+# Optional public Cloudflare Web Analytics site token; empty disables analytics. Loads only after analytics consent.
+CF_WEB_ANALYTICS_TOKEN=
 
 # Better Auth signing/encryption secret, at least 32 random characters (e.g. `openssl rand -base64 32`)
 BETTER_AUTH_SECRET=

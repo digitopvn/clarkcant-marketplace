@@ -26,6 +26,7 @@ export const INDEXING_REJECTION_CODES = [
   "manifest_missing",
   "manifest_invalid",
   "manifest_mismatch",
+  "manifest_too_large",
   "untrusted_tarball_url",
 ] as const;
 

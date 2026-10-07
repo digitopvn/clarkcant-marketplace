@@ -8456,6 +8456,12 @@ export interface operations {
                         indexedAt: string | null;
                         keywords: string[];
                         latest: {
+                            browserTokens: {
+                                facetId: string;
+                                provider: string;
+                                purpose: string;
+                                scopes: string[];
+                            }[];
                             facets: {
                                 entry: string;
                                 isolation: string;
@@ -8466,11 +8472,12 @@ export interface operations {
                             hasProvenance: boolean;
                             /** Format: date-time */
                             indexedAt: string;
+                            manifestSchemaVersion: 1 | 2 | null;
                             npmIntegrity: string;
                             permissions: {
                                 access: string | null;
                                 /** @enum {string} */
-                                kind: "capability" | "network" | "filesystem" | "microphone" | "camera" | "lifecycle";
+                                kind: "capability" | "network" | "filesystem" | "microphone" | "camera" | "lifecycle" | "service-capability" | "egress" | "secret" | "connection-scope" | "connection-endpoint" | "browser-token" | "resource-profile";
                                 value: string;
                             }[];
                             platforms: string[];
@@ -8486,11 +8493,62 @@ export interface operations {
                             /** Format: date-time */
                             publishedAt: string;
                             readmeHtml: string | null;
+                            resources: {
+                                gpu: boolean;
+                                /** @enum {string} */
+                                profile: "interactive-light" | "interactive-heavy" | "media-workstation" | "background-compute";
+                            } | null;
                             securityChecks: {
                                 check: string;
                                 details?: unknown;
                                 /** @enum {string} */
                                 result: "pass" | "warn" | "fail";
+                            }[];
+                            services: {
+                                capabilities: {
+                                    /** @enum {string} */
+                                    effectCategory: "read" | "local-write" | "external-write" | "destructive" | "financial" | "communication" | "media-capture";
+                                    inputArtifactFields: string[];
+                                    job: boolean;
+                                    ref: string;
+                                    requiredScopes: string[];
+                                    summary: string;
+                                    tool: string;
+                                }[];
+                                connection: {
+                                    authorizationEndpoint: string;
+                                    displayName: string;
+                                    endpoints: string[];
+                                    /** @enum {string} */
+                                    flow: "oauth-pkce";
+                                    probeUrl: string;
+                                    provider: string;
+                                    revocationEndpoint: string | null;
+                                    scopes: {
+                                        purpose: string;
+                                        scope: string;
+                                    }[];
+                                    tokenEndpoint: string;
+                                } | null;
+                                egress: {
+                                    origins: {
+                                        credential: {
+                                            header: string;
+                                            /** @enum {string} */
+                                            scheme: "bearer" | "raw";
+                                            secret: string;
+                                        } | null;
+                                        origin: string;
+                                        purpose: string;
+                                    }[];
+                                    secrets: {
+                                        name: string;
+                                        purpose: string;
+                                    }[];
+                                } | null;
+                                entry: string;
+                                facetId: string;
+                                protocol: string;
                             }[];
                             tarballSha512Verified: boolean;
                             version: string;
@@ -9161,4 +9219,4 @@ export interface operations {
 }
 
 /** SHA-256 of the OpenAPI document these types were generated from (without `servers`). */
-export const OPENAPI_DOCUMENT_SHA256 = "81567ee9504ec8090c1b9418321e252df4d550ae07fb205746997f41c46908bb";
+export const OPENAPI_DOCUMENT_SHA256 = "cb73696da2f6812e4ba44fba6ba8696a1f7d0d9dcf956fadc8c09e1b266b013d";

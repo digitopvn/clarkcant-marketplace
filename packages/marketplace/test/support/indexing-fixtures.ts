@@ -12,12 +12,29 @@ import {
 } from "../../src";
 import { resetDatabase } from "./seed";
 
-export type FixtureVariant = "valid" | "nextVersion" | "missingManifest" | "invalidManifest";
+export type FixtureVariant =
+  | "valid"
+  | "nextVersion"
+  | "missingManifest"
+  | "invalidManifest"
+  | "invalidServiceManifest"
+  | "maxPermissionRows"
+  | "tooManyPermissionRows";
+
+/** One npm package built around a vendored ClarkCant manifest (see `fixture-tarballs.setup.ts`). */
+export interface UpstreamPackage {
+  fixture: string;
+  name: string;
+  version: string;
+  tarball: string;
+}
 
 declare module "vitest" {
   export interface ProvidedContext {
     /** Base64 `npm pack` output per fixture variant (see `fixture-tarballs.setup.ts`). */
     fixtureTarballs: Record<FixtureVariant, string>;
+    /** One packed package per manifest in `fixtures/upstream/clarkcant`. */
+    upstreamPackages: UpstreamPackage[];
     /** True when `LIVE_NPM=1`: opt-in tests that talk to the real npm registry. */
     liveNpm: boolean;
   }
@@ -26,8 +43,17 @@ declare module "vitest" {
 export const FIXTURE_NAME = "@clarkcant/example-frame-widget";
 export const REGISTRY_URL = "https://registry.test/";
 
+function decodeBase64(value: string): Uint8Array {
+  return Uint8Array.from(atob(value), (char) => char.charCodeAt(0));
+}
+
 export function fixtureTarball(variant: FixtureVariant): Uint8Array {
-  return Uint8Array.from(atob(inject("fixtureTarballs")[variant]), (char) => char.charCodeAt(0));
+  return decodeBase64(inject("fixtureTarballs")[variant]);
+}
+
+/** Every package built from a vendored ClarkCant manifest, with its tarball bytes. */
+export function upstreamPackages(): (Omit<UpstreamPackage, "tarball"> & { bytes: Uint8Array })[] {
+  return inject("upstreamPackages").map(({ tarball, ...rest }) => ({ ...rest, bytes: decodeBase64(tarball) }));
 }
 
 /** Real D1 + R2 deps, as the jobs Worker builds them. */
@@ -37,11 +63,14 @@ export function indexingDeps(): MarketplaceDeps {
 
 /** A registry serving the given real tarballs, with packuments derived from them. */
 export async function fixtureRegistry(
-  tarballs: { variant: FixtureVariant; publishedAt?: Date }[],
+  tarballs: ({ variant: FixtureVariant; publishedAt?: Date } | { bytes: Uint8Array; publishedAt?: Date })[],
 ): Promise<NpmRegistry> {
   const fetch = await createLocalRegistryFetch(
     REGISTRY_URL,
-    tarballs.map((entry) => ({ bytes: fixtureTarball(entry.variant), publishedAt: entry.publishedAt })),
+    tarballs.map((entry) => ({
+      bytes: "bytes" in entry ? entry.bytes : fixtureTarball(entry.variant),
+      publishedAt: entry.publishedAt,
+    })),
   );
   return createNpmRegistry({ baseUrl: REGISTRY_URL, fetch });
 }

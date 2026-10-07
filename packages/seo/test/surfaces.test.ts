@@ -147,7 +147,7 @@ describe("share targets", () => {
   });
 });
 
-describe("Markdown twins", () => {
+describe("Markdown twin of a package", () => {
   it("renders a package from its canonical record, escaping author text and leaving the README on npm", () => {
     const markdown = renderPackageMarkdown({ siteUrl: SITE, pkg: detail(), install: INSTALL, versions: VERSIONS });
     expect(markdown.startsWith("# Frame \\*widget\\*\n")).toBe(true);
@@ -158,6 +158,97 @@ describe("Markdown twins", () => {
     expect(markdown).toContain(`[${SITE}/packages/%40acme/frame-widget](${SITE}/packages/%40acme/frame-widget)`);
     expect(markdown).not.toContain("third-party README text");
     expect(markdown).toContain("https://www.npmjs.com/package/@acme/frame-widget");
+  });
+});
+
+/** A version with one service, built from the shared fixture; `scope` is the account scope it asks for. */
+function serviceVersion(scope = "tasks.write") {
+  const base = detail().latest;
+  if (!base) throw new Error("fixture has a latest version");
+  return {
+    ...base,
+    manifestSchemaVersion: 2 as const,
+    permissions: [
+      { kind: "service-capability" as const, value: "com.acme.tasks.update@1", access: "external-write" },
+      { kind: "egress" as const, value: "https://api.acme.example", access: "ACME_KEY" },
+      { kind: "secret" as const, value: "ACME_KEY", access: null },
+      { kind: "connection-scope" as const, value: scope, access: "acme.tasks" },
+      { kind: "connection-endpoint" as const, value: "https://tasks.acme.example", access: "acme.tasks" },
+      { kind: "resource-profile" as const, value: "background-compute", access: "gpu" },
+    ],
+    services: [
+      {
+        facetId: "com.acme.tasks.service",
+        entry: "service/server.mjs",
+        protocol: "mcp-stdio",
+        capabilities: [
+          {
+            tool: "update_task",
+            ref: "com.acme.tasks.update@1",
+            summary: "Update a task",
+            effectCategory: "external-write" as const,
+            job: true,
+            requiredScopes: [scope],
+            inputArtifactFields: ["attachment"],
+          },
+        ],
+        egress: {
+          secrets: [{ name: "ACME_KEY", purpose: "Signs requests in." }],
+          origins: [
+            {
+              origin: "https://api.acme.example",
+              purpose: "Reads the weather.",
+              credential: { secret: "ACME_KEY", header: "authorization", scheme: "bearer" as const },
+            },
+          ],
+        },
+        connection: {
+          provider: "acme.tasks",
+          displayName: "Acme Tasks",
+          flow: "oauth-pkce" as const,
+          authorizationEndpoint: "https://tasks.acme.example/oauth/authorize?x=1",
+          tokenEndpoint: "https://tasks.acme.example/oauth/token",
+          revocationEndpoint: null,
+          scopes: [{ scope, purpose: "Updates your tasks." }],
+          endpoints: ["https://tasks.acme.example"],
+          probeUrl: "https://tasks.acme.example/api/me",
+        },
+      },
+    ],
+  };
+}
+
+/** Markdown with every inline code span removed, matched the CommonMark way: a backtick run closes only on a run of the same length. */
+function outsideCodeSpans(markdown: string): string {
+  return markdown.replace(/(?<![\\`])(`+)(?!`)([\s\S]*?[^`])\1(?!`)/g, " ");
+}
+
+describe("Markdown twins", () => {
+  it("describes a service's capabilities, reach, secrets and account connection as requests", () => {
+    const markdown = renderPackageMarkdown({ siteUrl: SITE, pkg: detail({ latest: serviceVersion() }), install: INSTALL, versions: VERSIONS });
+    expect(markdown).toContain("Service com.acme.tasks.service (mcp-stdio)");
+    expect(markdown).toContain("(Higher risk): `com.acme.tasks.update@1, changes things in another service`.");
+    expect(markdown).toContain("Runs as a job you can follow and stop. Needs account scope tasks.write.");
+    expect(markdown).toContain("- `https://api.acme.example`: Reads the weather.");
+    expect(markdown).toContain("- `ACME_KEY`: Signs requests in.");
+    expect(markdown).toContain("You sign in at https://tasks.acme.example.");
+    expect(markdown).toContain("- Scope `tasks.write`: Updates your tasks.");
+    expect(markdown).toContain("- Account API: `https://tasks.acme.example`");
+    // Rows the services section already explains are not repeated; the rest still are.
+    expect(markdown).toContain("Other permissions");
+    expect(markdown).toContain("Resource profile (Needs your consent): background-compute with a GPU");
+    expect(markdown).not.toContain("Secret you provide");
+    expect(markdown).not.toContain("Service network access");
+  });
+
+  it("keeps a hostile manifest string inside its code span, so it cannot add links or HTML to the twin", () => {
+    const scope = "x`[Install fix](https://evil.example/p)`<img/src=x/onerror=alert(1)>";
+    const markdown = renderPackageMarkdown({ siteUrl: SITE, pkg: detail({ latest: serviceVersion(scope) }), install: INSTALL, versions: VERSIONS });
+    expect(markdown).toContain(`- Scope \`\`${scope}\`\`: Updates your tasks.`);
+    // Outside code spans the string may still appear as escaped prose (the capability notes), never as live syntax.
+    const prose = outsideCodeSpans(markdown);
+    expect(prose).not.toMatch(/(?<!\\)\]\(https:\/\/evil/);
+    expect(prose).not.toMatch(/(?<!\\)<img/i);
   });
 
   it("renders a package without an indexed version", () => {
