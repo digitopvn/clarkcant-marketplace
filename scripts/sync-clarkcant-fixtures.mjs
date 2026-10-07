@@ -269,7 +269,9 @@ function readUpstream(from) {
   if (!existsSync(join(from, READER_MODULE))) {
     throw new SyncError(`${from} does not look like a ClarkCant checkout (no ${READER_MODULE})`);
   }
-  const dirty = git(from, ["status", "--porcelain", "--", ...EXECUTED_PATHS]).trim();
+  // File modes are ignored: `pnpm install` marks the CLI's bin target (packages/widget-cli/src/cli.ts) executable,
+  // which changes no code that runs.
+  const dirty = git(from, ["-c", "core.fileMode=false", "status", "--porcelain", "--", ...EXECUTED_PATHS]).trim();
   if (dirty) throw new SyncError(`the checkout has uncommitted changes in code this script runs:\n${dirty}`);
   const commit = git(from, ["rev-parse", "HEAD"]).trim();
   const show = (path) => normalise(git(from, ["show", `${commit}:${path}`]));
