@@ -88,11 +88,18 @@ jobs:
         working-directory: apps/jobs
         run: pnpm exec wrangler deploy --env "$TARGET_ENV"
 
-      # The Astro adapter bakes the selected wrangler environment into the generated deploy config.
+      # The Astro adapter bakes the selected wrangler environment into the generated deploy config. The public Web
+      # Analytics site token is an environment variable, not a committed value; unset leaves analytics off.
       - name: Build and deploy web worker
+        env:
+          CF_WEB_ANALYTICS_TOKEN: ${{ vars.CF_WEB_ANALYTICS_TOKEN }}
         run: |
           CLOUDFLARE_ENV="$TARGET_ENV" pnpm --filter @marketplace/web build
-          pnpm --filter @marketplace/web exec wrangler deploy
+          if [ -n "$CF_WEB_ANALYTICS_TOKEN" ]; then
+            pnpm --filter @marketplace/web exec wrangler deploy --var "CF_WEB_ANALYTICS_TOKEN:$CF_WEB_ANALYTICS_TOKEN"
+          else
+            pnpm --filter @marketplace/web exec wrangler deploy
+          fi
 
       - name: Smoke test deployed site
         run: |
